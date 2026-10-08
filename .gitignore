@@ -1,0 +1,27 @@
+# Rust
+/target/
+**/target/
+Cargo.lock
+
+# Environment and Secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Anchor / Solana
+.anchor/
+deploy/
+
+# Android
+.gradle/
+build/
+**/build/
+local.properties
+*.apk
+*.aab
