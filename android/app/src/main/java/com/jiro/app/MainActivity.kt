@@ -450,14 +450,14 @@ fun JiroAppScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text("Merchant Payment:", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text("$$${RoundUp.formatUsdc(paymentRaw)}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    Text("$${RoundUp.formatUsdc(paymentRaw)}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                                 }
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text("Spare-Change Round-Up:", fontSize = 13.sp, color = Color(0xFF10B981))
-                                    Text("+ $$${RoundUp.formatUsdc(roundUpRaw)}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF10B981))
+                                    Text("+ $${RoundUp.formatUsdc(roundUpRaw)}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF10B981))
                                 }
                                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.surfaceVariant)
                                 Row(
@@ -465,7 +465,7 @@ fun JiroAppScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text("Total Charged (1 Signature):", fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                    Text("$$${RoundUp.formatUsdc(paymentRaw + roundUpRaw)}", fontSize = 14.sp, fontWeight = FontWeight.Black)
+                                    Text("$${RoundUp.formatUsdc(paymentRaw + roundUpRaw)}", fontSize = 14.sp, fontWeight = FontWeight.Black)
                                 }
                             }
                         }
