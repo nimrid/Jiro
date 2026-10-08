@@ -1,50 +1,48 @@
 use keeper::client::BackpackClient;
-use keeper::signer::BackpackSigner;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Load .env if present
-    let _ = dotenvy::dotenv();
-
-    println!("--- Testing Public Endpoints ---");
     let client = BackpackClient::new(None, None);
 
-    println!("1. Fetching securities...");
-    match client.get_securities().await {
-        Ok(securities) => println!("   Successfully fetched {} securities.", securities.len()),
-        Err(e) => eprintln!("   Failed to fetch securities: {}", e),
-    }
+    println!("=== WORKSTREAM B: MARKET & ASSET DISCOVERY ===\n");
 
-    println!("2. Fetching stock sessions...");
-    match client.get_stock_sessions().await {
-        Ok(sessions) => println!("   Successfully fetched {} sessions.", sessions.len()),
-        Err(e) => eprintln!("   Failed to fetch stock sessions: {}", e),
-    }
+    println!("--- 1. Fetching Securities (VOO.US, AAPL.US, QQQ.US) ---");
+    let securities = client.get_securities().await?;
+    let targets = ["VOO", "VOO.US", "AAPL", "AAPL.US", "QQQ", "QQQ.US"];
 
-    println!("3. Fetching indicative quote for AAPL.US...");
-    match client.get_stock_indicative_quote("AAPL.US", "Bid", "1").await {
-        Ok(quote) => println!("   Indicative quote: symbol={}, available={}, price={:?}", quote.symbol, quote.available, quote.price),
-        Err(e) => eprintln!("   Failed to fetch indicative quote: {}", e),
-    }
-
-    println!("\n--- Testing Authenticated Endpoint (/account) ---");
-    match BackpackSigner::from_env() {
-        Ok(signer) => {
-            println!("   Signer initialized from environment.");
-            let authed_client = BackpackClient::new(None, Some(signer));
-            match authed_client.get_account().await {
-                Ok(account) => {
-                    println!("   Successfully retrieved account! autoLend={}, autoBorrowSettlements={}", account.auto_lend, account.auto_borrow_settlements);
-                }
-                Err(e) => {
-                    eprintln!("   Failed to fetch account: {}", e);
-                }
+    let mut found_count = 0;
+    for s in &securities {
+        if targets.iter().any(|&t| s.asset == t || s.name.contains(t)) {
+            found_count += 1;
+            println!("Security: {} (Asset: {}, CUSIP: {:?})", s.name, s.asset, s.cusip);
+            for session in &s.sessions {
+                println!(
+                    "  Session: '{}' -> minQuantity: {}, stepSize: {}, maxQuantity: {:?}",
+                    session.name, session.min_quantity, session.step_size, session.max_quantity
+                );
             }
         }
-        Err(e) => {
-            println!("   Skipping /account live call: {}", e);
-            println!("   Set BACKPACK_API_SECRET (and optional BACKPACK_API_KEY) in .env to run live account query.");
+    }
+    if found_count == 0 {
+        println!("No exact matches found for target tickers. Listing first 10 stock assets:");
+        for s in securities.iter().take(10) {
+            println!("  Asset: {}, Name: {}", s.asset, s.name);
         }
+    }
+
+    println!("\n--- 2. Fetching USDC Minimum Deposit on Solana ---");
+    let assets = client.get_assets().await?;
+    let usdc = assets.iter().find(|a| a.symbol == "USDC");
+    if let Some(usdc_asset) = usdc {
+        println!("Found asset: {} ({})", usdc_asset.symbol, usdc_asset.display_name);
+        for token in &usdc_asset.tokens {
+            println!(
+                "  Blockchain: '{}' | depositEnabled: {} | minimumDeposit: {:?} | decimals: {:?}",
+                token.blockchain, token.deposit_enabled, token.minimum_deposit, token.native_decimals
+            );
+        }
+    } else {
+        println!("USDC asset not found in assets list.");
     }
 
     Ok(())
