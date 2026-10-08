@@ -150,6 +150,37 @@ impl BackpackClient {
             let body = resp.text().await.unwrap_or_default();
             return Err(ClientError::ApiError { status, body });
         }
-        Ok(resp.json::<AccountSummary>().await?)
+        let text = resp.text().await?;
+        serde_json::from_str::<AccountSummary>(&text).map_err(|e| {
+            ClientError::ApiError {
+                status: reqwest::StatusCode::OK,
+                body: format!("JSON decode error: {} for payload: {}", e, text),
+            }
+        })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_deserialize_account_summary_real_payload() {
+        let payload = r#"{"autoBorrowSettlements":true,"autoLend":false,"autoRealizePnl":true,"autoRepayBorrows":false,"borrowLimit":"5000000","futuresMakerFee":"2","futuresTakerFee":"5","leverageLimit":"1","limitOrders":0,"liquidating":false,"positionLimit":"20000000","spotMakerFee":"8","spotTakerFee":"10","triggerOrders":0}"#;
+        let parsed: AccountSummary = serde_json::from_str(payload).expect("should parse successfully");
+        assert!(!parsed.auto_lend);
+        assert!(parsed.auto_borrow_settlements);
+        assert_eq!(parsed.borrow_limit.as_deref(), Some("5000000"));
+    }
+
+    #[tokio::test]
+    async fn test_live_account_call_if_env_present() {
+        let _ = dotenvy::dotenv();
+        if let Ok(signer) = BackpackSigner::from_env() {
+            let client = BackpackClient::new(None, Some(signer));
+            let account = client.get_account().await.expect("GET /account should return 200");
+            assert_eq!(account.borrow_limit.as_deref(), Some("5000000"));
+        }
+    }
+}
+

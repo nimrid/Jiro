@@ -99,11 +99,23 @@ pub struct AccountSummary {
     #[serde(default)]
     pub borrow_limit: Option<String>,
     #[serde(default)]
-    pub leverage_limit: Option<u32>,
+    pub futures_maker_fee: Option<String>,
+    #[serde(default)]
+    pub futures_taker_fee: Option<String>,
+    #[serde(default)]
+    pub leverage_limit: Option<serde_json::Value>,
     #[serde(default)]
     pub limit_orders: Option<u32>,
     #[serde(default)]
+    pub liquidating: Option<bool>,
+    #[serde(default)]
     pub position_limit: Option<String>,
+    #[serde(default)]
+    pub spot_maker_fee: Option<String>,
+    #[serde(default)]
+    pub spot_taker_fee: Option<String>,
+    #[serde(default)]
+    pub trigger_orders: Option<u32>,
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
 }
