@@ -15,19 +15,19 @@ QQQ.US). Target device: Solana Seeker (Android, Seed Vault, Mobile Wallet Adapte
 
 ## Architecture (do not redesign without asking)
 1. PAYMENT TX: the app builds ONE Solana transaction containing (a) the payment
-   SPL-USDC transfer to the merchant and (b) the round-up vault.deposit instruction.
-   User signs once via MWA signAndSendTransactions.
+   SPL-USDC transfer to the merchant and (b) the round-up deposit instruction
+   to the user's vault (`vault.deposit(roundup)`). User signs once via MWA signAndSendTransactions.
 2. VAULT PROGRAM (Anchor), per-user PDA, FOUR instructions: init_vault, deposit,
    sweep, withdraw. Deposits go through the `deposit` instruction so the on-chain
    max_balance cap is enforced. The bundled payment tx is:
    [payment transfer, vault.deposit(roundup)].
    - init_vault: stores owner, destination token account, keeper authority,
      threshold, max_balance cap.
-   - deposit: moves funds from user token account into the vault token account;
-     enforces that resulting balance <= max_balance cap.
+   - deposit: owner-signed; transfers from owner's token account to vault token
+     account; enforces vault_balance + amount <= max_balance.
    - sweep: callable only by the keeper; succeeds only if balance >= threshold;
      moves funds ONLY to the stored destination; never anywhere else.
-   - withdraw: owner-signed; owner can pull their full balance anytime.
+   - withdraw: owner-signed; owner can pull their balance anytime.
 3. KEEPER (Rust): watches vault balances, triggers sweep at threshold (or weekly
    if balance >= Backpack's minimum deposit), then runs the Backpack buy flow.
 4. BACKPACK BUY FLOW: after the deposit credits, get an indicative quote, convert
