@@ -17,6 +17,9 @@ Thumbs.db
 # Anchor / Solana
 .anchor/
 deploy/
+node_modules/
+**/node_modules/
+*keypair*.json
 
 # Android
 .gradle/

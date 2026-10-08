@@ -1,0 +1,22 @@
+[toolchain]
+anchor_version = "1.2.0"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+vault = "AU4qNgE5qEvuULeKTxJgotM2V8eNygZj14YWDSMU5dqc"
+
+[programs.devnet]
+vault = "AU4qNgE5qEvuULeKTxJgotM2V8eNygZj14YWDSMU5dqc"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "Localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "npm test"
