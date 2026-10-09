@@ -14,4 +14,5 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "JIRO"
+include(":core")
 include(":app")
