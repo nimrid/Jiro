@@ -8,6 +8,101 @@
   },
   "instructions": [
     {
+      "name": "close_vault",
+      "discriminator": [
+        141,
+        103,
+        17,
+        126,
+        72,
+        75,
+        29,
+        29
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "vault_config"
+          ]
+        },
+        {
+          "name": "vault_config",
+          "writable": true
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "vault_config"
+          ]
+        },
+        {
+          "name": "vault_token_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault_config"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "deposit",
       "discriminator": [
         242,
@@ -29,25 +124,7 @@
           ]
         },
         {
-          "name": "vault_config",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "owner"
-              }
-            ]
-          }
+          "name": "vault_config"
         },
         {
           "name": "mint",
@@ -147,35 +224,11 @@
           "signer": true
         },
         {
-          "name": "keeper"
-        },
-        {
           "name": "mint"
         },
         {
-          "name": "destination"
-        },
-        {
           "name": "vault_config",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "owner"
-              }
-            ]
-          }
+          "writable": true
         },
         {
           "name": "vault_token_account",
@@ -249,8 +302,8 @@
       ],
       "args": [
         {
-          "name": "threshold",
-          "type": "u64"
+          "name": "vault_id",
+          "type": "u8"
         },
         {
           "name": "max_balance",
@@ -259,69 +312,66 @@
       ]
     },
     {
-      "name": "sweep",
+      "name": "mock_init",
       "discriminator": [
-        40,
-        23,
-        234,
-        175,
-        14,
-        61,
-        154,
-        177
+        244,
+        88,
+        66,
+        111,
+        116,
+        121,
+        32,
+        16
       ],
       "accounts": [
         {
-          "name": "keeper",
-          "signer": true,
-          "relations": [
-            "vault_config"
-          ]
+          "name": "admin",
+          "writable": true,
+          "signer": true
         },
         {
-          "name": "vault_config",
+          "name": "stock_mint"
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "mock_config",
+          "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
+                  109,
+                  111,
+                  99,
+                  107
                 ]
               },
               {
                 "kind": "account",
-                "path": "vault_config.owner",
-                "account": "VaultConfig"
+                "path": "stock_mint"
               }
             ]
           }
         },
         {
-          "name": "mint",
-          "relations": [
-            "vault_config"
-          ]
-        },
-        {
-          "name": "vault_token_account",
+          "name": "treasury_token_account",
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "account",
-                "path": "vault_config"
+                "path": "mock_config"
               },
               {
                 "kind": "account",
-                "path": "token_program"
+                "path": "stock_token_program"
               },
               {
                 "kind": "account",
-                "path": "mint"
+                "path": "stock_mint"
               }
             ],
             "program": {
@@ -364,15 +414,322 @@
           }
         },
         {
-          "name": "destination_token_account",
+          "name": "sink_token_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "mock_config"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "usdc_token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "stock_token_program"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        }
+      ],
+      "args": [
+        {
+          "name": "price",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "mock_set_price",
+      "discriminator": [
+        144,
+        42,
+        159,
+        110,
+        155,
+        184,
+        48,
+        44
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "mock_config"
+          ]
+        },
+        {
+          "name": "mock_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  111,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mock_config.stock_mint",
+                "account": "MockConfig"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "new_price",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "mock_swap",
+      "discriminator": [
+        132,
+        118,
+        185,
+        134,
+        25,
+        56,
+        106,
+        10
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "mock_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  111,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "stock_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "stock_mint",
+          "relations": [
+            "mock_config"
+          ]
+        },
+        {
+          "name": "sink_token_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "mock_config"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "treasury_token_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "mock_config"
+              },
+              {
+                "kind": "account",
+                "path": "stock_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "stock_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "owner_usdc_account",
           "writable": true
         },
         {
-          "name": "token_program",
+          "name": "owner_stock_account",
+          "writable": true
+        },
+        {
+          "name": "usdc_token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "stock_token_program"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "usdc_in",
+          "type": "u64"
+        },
+        {
+          "name": "min_out",
+          "type": "u64"
+        }
+      ]
     },
     {
       "name": "withdraw",
@@ -389,32 +746,13 @@
       "accounts": [
         {
           "name": "owner",
-          "writable": true,
           "signer": true,
           "relations": [
             "vault_config"
           ]
         },
         {
-          "name": "vault_config",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "owner"
-              }
-            ]
-          }
+          "name": "vault_config"
         },
         {
           "name": "mint",
@@ -498,6 +836,19 @@
   ],
   "accounts": [
     {
+      "name": "MockConfig",
+      "discriminator": [
+        254,
+        201,
+        230,
+        59,
+        102,
+        61,
+        239,
+        104
+      ]
+    },
+    {
       "name": "VaultConfig",
       "discriminator": [
         99,
@@ -513,84 +864,120 @@
   ],
   "events": [
     {
-      "name": "Swept",
+      "name": "Closed",
       "discriminator": [
-        254,
-        138,
-        9,
+        50,
+        31,
+        87,
+        155,
+        135,
+        220,
+        195,
+        239
+      ]
+    },
+    {
+      "name": "Deposited",
+      "discriminator": [
+        111,
+        141,
+        26,
+        45,
+        161,
+        35,
+        100,
+        57
+      ]
+    },
+    {
+      "name": "Withdrawn",
+      "discriminator": [
+        20,
+        89,
+        223,
         198,
-        192,
-        61,
-        165,
-        135
+        194,
+        124,
+        219,
+        13
       ]
     }
   ],
   "errors": [
     {
       "code": 6000,
-      "name": "InvalidThreshold",
-      "msg": "Threshold must be greater than zero"
+      "name": "InvalidMaxBalance",
+      "msg": "Max balance must be greater than zero and at most 100 USDC"
     },
     {
       "code": 6001,
-      "name": "MaxBalanceBelowThreshold",
-      "msg": "Max balance must be at least equal to threshold"
-    },
-    {
-      "code": 6002,
-      "name": "MaxBalanceExceedsHardCap",
-      "msg": "Max balance exceeds hard cap of 100 USDC"
-    },
-    {
-      "code": 6003,
       "name": "ZeroDepositAmount",
       "msg": "Deposit amount must be greater than zero"
     },
     {
-      "code": 6004,
+      "code": 6002,
       "name": "DepositExceedsCap",
-      "msg": "Deposit would exceed max balance cap"
+      "msg": "Deposit would exceed configured vault max balance cap"
     },
     {
-      "code": 6005,
-      "name": "BelowSweepThreshold",
-      "msg": "Vault balance is below sweep threshold"
-    },
-    {
-      "code": 6006,
-      "name": "InvalidDestinationAddress",
-      "msg": "Destination account address does not match config"
-    },
-    {
-      "code": 6007,
-      "name": "InvalidDestinationMint",
-      "msg": "Destination account mint does not match config mint"
-    },
-    {
-      "code": 6008,
-      "name": "InvalidWithdrawOwner",
-      "msg": "Destination account owner must match vault owner"
-    },
-    {
-      "code": 6009,
+      "code": 6003,
       "name": "ZeroWithdrawAmount",
       "msg": "Withdraw amount must be greater than zero"
     },
     {
-      "code": 6010,
+      "code": 6004,
       "name": "InsufficientVaultBalance",
       "msg": "Withdraw amount exceeds vault balance"
     },
     {
-      "code": 6011,
+      "code": 6005,
+      "name": "VaultNotEmpty",
+      "msg": "Vault token account balance must be zero to close vault"
+    },
+    {
+      "code": 6006,
+      "name": "InvalidDestinationOwner",
+      "msg": "Destination token account owner must match vault owner"
+    },
+    {
+      "code": 6007,
+      "name": "InvalidMint",
+      "msg": "Token mint does not match vault config mint"
+    },
+    {
+      "code": 6008,
+      "name": "InvalidDecimals",
+      "msg": "Mint decimals must be 6"
+    },
+    {
+      "code": 6009,
+      "name": "Token2022Rejected",
+      "msg": "Token-2022 is rejected for vault token account (classic Token only)"
+    },
+    {
+      "code": 6010,
       "name": "MathOverflow",
-      "msg": "Arithmetic overflow"
+      "msg": "Math overflow occurred"
+    },
+    {
+      "code": 6011,
+      "name": "Unauthorized",
+      "msg": "Signer is not authorized"
+    },
+    {
+      "code": 6012,
+      "name": "InvalidPrice",
+      "msg": "Price must be greater than zero"
+    },
+    {
+      "code": 6013,
+      "name": "SlippageExceeded",
+      "msg": "Output amount is below minimum expected amount"
     }
   ],
   "types": [
     {
-      "name": "Swept",
+      "name": "Closed",
       "type": {
         "kind": "struct",
         "fields": [
@@ -601,6 +988,54 @@
           {
             "name": "amount",
             "type": "u64"
+          },
+          {
+            "name": "vault_id",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Deposited",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "vault_id",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MockConfig",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "stock_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "price",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
           }
         ]
       }
@@ -615,20 +1050,12 @@
             "type": "pubkey"
           },
           {
-            "name": "keeper",
-            "type": "pubkey"
-          },
-          {
             "name": "mint",
             "type": "pubkey"
           },
           {
-            "name": "destination",
-            "type": "pubkey"
-          },
-          {
-            "name": "threshold",
-            "type": "u64"
+            "name": "vault_id",
+            "type": "u8"
           },
           {
             "name": "max_balance",
@@ -636,6 +1063,26 @@
           },
           {
             "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Withdrawn",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "vault_id",
             "type": "u8"
           }
         ]

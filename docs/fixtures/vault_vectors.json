@@ -1,17 +1,38 @@
 {
   "programId": "AU4qNgE5qEvuULeKTxJgotM2V8eNygZj14YWDSMU5dqc",
   "owner": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
-  "usdcMint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
-  "vaultPda": "AtDBHZDyUj85XWBywGTQTqeeMKvoN1fWubYuZfSqfc33",
-  "bump": 253,
-  "vaultAta": "6N37n5oDiscZACmxpNQD5GbwRwPP3rhH3Yfj3HtZf3qF",
-  "vectors": {
-    "initVault": {
-      "threshold": "5000000",
+  "usdcMintMainnet": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "usdcMintDevnet": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+  "vaults": [
+    {
+      "vaultId": 0,
+      "vaultPda": "9n5xJe4G7n7H4exGHT1y6wVzqyEVBWB3CRVjd6ty9n4A",
+      "bump": 254,
+      "vaultAtaMainnet": "G5W8KvAB1DMa6Nxzuseu44eTV31e2Z3gkyTMrRu8ekz8",
+      "vaultAtaDevnet": "HgGYh3Ei2XbwdZ2ahf2WwEu7n3oFiQNj9Z2cnonJCu2j"
+    },
+    {
+      "vaultId": 1,
+      "vaultPda": "7gLhqhcPfJGdfohCtpoGJB5YCJkYJSQncGhgFJGBB6rw",
+      "bump": 255,
+      "vaultAtaMainnet": "HPLXox1W9456zFcgCn7oRuubYyiPFxW1ENp2REMmDSxv",
+      "vaultAtaDevnet": "CkTT855PkF9AGXeFQd6V1eVQeRB3tFYoi6Ps2YKUWmVp"
+    }
+  ],
+  "instructions": {
+    "initVault_vault0": {
+      "vaultId": 0,
       "maxBalance": "50000000",
       "discriminatorHex": "4d4f559621d9346a",
-      "instructionDataHex": "4d4f559621d9346a404b4c000000000080f0fa0200000000",
-      "lengthBytes": 24
+      "instructionDataHex": "4d4f559621d9346a0080f0fa0200000000",
+      "lengthBytes": 17
+    },
+    "initVault_vault1": {
+      "vaultId": 1,
+      "maxBalance": "100000000",
+      "discriminatorHex": "4d4f559621d9346a",
+      "instructionDataHex": "4d4f559621d9346a0100e1f50500000000",
+      "lengthBytes": 17
     },
     "deposit": {
       "amount": "500000",
@@ -19,16 +40,35 @@
       "instructionDataHex": "f223c68952e1f2b620a1070000000000",
       "lengthBytes": 16
     },
-    "sweep": {
-      "discriminatorHex": "2817eaaf0e3d9ab1",
-      "instructionDataHex": "2817eaaf0e3d9ab1",
+    "withdraw": {
+      "amount": "500000",
+      "discriminatorHex": "b712469c946da122",
+      "instructionDataHex": "b712469c946da12220a1070000000000",
+      "lengthBytes": 16
+    },
+    "closeVault": {
+      "discriminatorHex": "8d67117e484b1d1d",
+      "instructionDataHex": "8d67117e484b1d1d",
       "lengthBytes": 8
     },
-    "withdraw": {
-      "amount": "5000000",
-      "discriminatorHex": "b712469c946da122",
-      "instructionDataHex": "b712469c946da122404b4c0000000000",
+    "mockInit": {
+      "price": "100000000",
+      "discriminatorHex": "f458426f74792010",
+      "instructionDataHex": "f458426f7479201000e1f50500000000",
       "lengthBytes": 16
+    },
+    "mockSetPrice": {
+      "newPrice": "150000000",
+      "discriminatorHex": "902a9f6e9bb8302c",
+      "instructionDataHex": "902a9f6e9bb8302c80d1f00800000000",
+      "lengthBytes": 16
+    },
+    "mockSwap": {
+      "usdcIn": "10000000",
+      "minOut": "100000",
+      "discriminatorHex": "8476b98619386a0a",
+      "instructionDataHex": "8476b98619386a0a8096980000000000a086010000000000",
+      "lengthBytes": 24
     }
   }
 }
