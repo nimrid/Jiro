@@ -195,9 +195,74 @@ data class MessageV0(
             val staticNonsignerWritable = mutableListOf<PublicKey>()
             val staticNonsignerReadonly = mutableListOf<PublicKey>()
 
-            // For now, if no lookup tables, all accounts are static
-            staticNonsignerWritable.addAll(nonsignerWritable)
-            staticNonsignerReadonly.addAll(nonsignerReadonly)
+            val programIds = instructions.map { it.programId }.toSet()
+            val tableWritableIndices = mutableMapOf<AddressLookupTableAccount, MutableList<Int>>()
+            val tableReadonlyIndices = mutableMapOf<AddressLookupTableAccount, MutableList<Int>>()
+
+            for (key in nonsignerWritable) {
+                if (programIds.contains(key) || lookupTables.isEmpty()) {
+                    staticNonsignerWritable.add(key)
+                    continue
+                }
+                var found = false
+                for (table in lookupTables) {
+                    val idx = table.addresses.indexOf(key)
+                    if (idx != -1) {
+                        tableWritableIndices.getOrPut(table) { mutableListOf() }.add(idx)
+                        found = true
+                        break
+                    }
+                }
+                if (!found) {
+                    staticNonsignerWritable.add(key)
+                }
+            }
+
+            for (key in nonsignerReadonly) {
+                if (programIds.contains(key) || lookupTables.isEmpty()) {
+                    staticNonsignerReadonly.add(key)
+                    continue
+                }
+                var found = false
+                for (table in lookupTables) {
+                    val idx = table.addresses.indexOf(key)
+                    if (idx != -1) {
+                        tableReadonlyIndices.getOrPut(table) { mutableListOf() }.add(idx)
+                        found = true
+                        break
+                    }
+                }
+                if (!found) {
+                    staticNonsignerReadonly.add(key)
+                }
+            }
+
+            val orderedLoadedWritable = mutableListOf<PublicKey>()
+            val orderedLoadedReadonly = mutableListOf<PublicKey>()
+
+            for (table in lookupTables) {
+                val w = tableWritableIndices[table] ?: emptyList()
+                val r = tableReadonlyIndices[table] ?: emptyList()
+                if (w.isNotEmpty() || r.isNotEmpty()) {
+                    addressTableLookups.add(
+                        MessageAddressTableLookup(
+                            accountKey = table.key,
+                            writableIndexes = w,
+                            readonlyIndexes = r
+                        )
+                    )
+                    for (wIdx in w) {
+                        orderedLoadedWritable.add(table.addresses[wIdx])
+                    }
+                }
+            }
+
+            for (table in lookupTables) {
+                val r = tableReadonlyIndices[table] ?: emptyList()
+                for (rIdx in r) {
+                    orderedLoadedReadonly.add(table.addresses[rIdx])
+                }
+            }
 
             val staticAccountKeys = mutableListOf<PublicKey>().apply {
                 addAll(signerWritable)
@@ -220,11 +285,22 @@ data class MessageV0(
                 }
 
                 val accountKeyIndexes = ix.keys.map { meta ->
-                    val idx = staticAccountKeys.indexOf(meta.pubkey)
-                    if (idx == -1) {
-                        throw IllegalStateException("Account key ${meta.pubkey.toBase58()} not found in keys")
+                    val staticIdx = staticAccountKeys.indexOf(meta.pubkey)
+                    if (staticIdx != -1) {
+                        staticIdx
+                    } else {
+                        val loadedWritableIdx = orderedLoadedWritable.indexOf(meta.pubkey)
+                        if (loadedWritableIdx != -1) {
+                            staticAccountKeys.size + loadedWritableIdx
+                        } else {
+                            val loadedReadonlyIdx = orderedLoadedReadonly.indexOf(meta.pubkey)
+                            if (loadedReadonlyIdx != -1) {
+                                staticAccountKeys.size + orderedLoadedWritable.size + loadedReadonlyIdx
+                            } else {
+                                throw IllegalStateException("Account key ${meta.pubkey.toBase58()} not found in static or lookup table keys")
+                            }
+                        }
                     }
-                    idx
                 }
 
                 CompiledInstruction(

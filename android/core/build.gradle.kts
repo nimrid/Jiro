@@ -9,6 +9,7 @@ kotlin {
 dependencies {
     implementation(libs.bouncy.castle)
     implementation(libs.okhttp)
+    implementation("org.json:json:20240303")
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.bouncy.castle)

@@ -91,14 +91,34 @@ object SwapTxValidator {
                             )
                         }
                         IX_CLOSE_ACCOUNT -> {
-                            // Close account is only allowed inside program-controlled CPIs or temp accounts,
-                            // never top-level on user's persistent accounts
-                            throw SwapValidationError.ForbiddenInstruction(
-                                "Direct top-level CloseAccount is forbidden"
-                            )
+                            // Close account is only allowed for temp accounts (e.g. temp wSOL) where lamports are refunded to user
+                            val destinationIdx = ix.accountKeyIndexes.getOrNull(1)
+                                ?: throw SwapValidationError.ForbiddenInstruction("CloseAccount missing destination account")
+                            val destinationKey = message.staticAccountKeys.getOrNull(destinationIdx)
+                            if (destinationKey != user) {
+                                throw SwapValidationError.ForbiddenInstruction(
+                                    "CloseAccount destination must be user to refund lamports, got: ${destinationKey?.toBase58()}"
+                                )
+                            }
                         }
                     }
                 }
+            }
+        }
+    }
+
+    /**
+     * Statically inspects all transactions in a TransactionPlan (Single or TwoStep).
+     */
+    fun validatePlan(
+        plan: TransactionPlan,
+        user: PublicKey
+    ) {
+        when (plan) {
+            is TransactionPlan.Single -> validateStatic(plan.message, user)
+            is TransactionPlan.TwoStep -> {
+                validateStatic(plan.step1, user)
+                validateStatic(plan.step2, user)
             }
         }
     }

@@ -8,6 +8,20 @@ data class SwapQuote(
     val minOutputAmount: Long,
     val priceImpactBps: Int,
     val timestampMs: Long = System.currentTimeMillis()
+) {
+    fun isExpired(nowMs: Long = System.currentTimeMillis(), ttlMs: Long = 30_000L): Boolean {
+        return (nowMs - timestampMs) > ttlMs
+    }
+}
+
+data class SwapPlan(
+    val quote: SwapQuote,
+    val setupInstructions: List<TransactionInstruction> = emptyList(),
+    val swapInstruction: TransactionInstruction,
+    val cleanupInstruction: TransactionInstruction? = null,
+    val computeBudgetInstructions: List<TransactionInstruction> = emptyList(),
+    val lookupTables: List<AddressLookupTableAccount> = emptyList(),
+    val recentBlockhash: ByteArray? = null
 )
 
 interface SwapProvider {
@@ -18,10 +32,16 @@ interface SwapProvider {
         slippageBps: Int = 100
     ): SwapQuote
 
+    suspend fun buildSwapPlan(
+        user: PublicKey,
+        quote: SwapQuote,
+        slippageBps: Int = 100
+    ): SwapPlan
+
     suspend fun buildSwapInstruction(
         user: PublicKey,
         quote: SwapQuote
-    ): TransactionInstruction
+    ): TransactionInstruction = buildSwapPlan(user, quote).swapInstruction
 }
 
 class MockSwapProvider(
@@ -52,11 +72,12 @@ class MockSwapProvider(
         )
     }
 
-    override suspend fun buildSwapInstruction(
+    override suspend fun buildSwapPlan(
         user: PublicKey,
-        quote: SwapQuote
-    ): TransactionInstruction {
-        return Instructions.mockSwap(
+        quote: SwapQuote,
+        slippageBps: Int
+    ): SwapPlan {
+        val swapIx = Instructions.mockSwap(
             owner = user,
             stockMint = quote.outputMint,
             usdcMint = usdcMint,
@@ -65,6 +86,17 @@ class MockSwapProvider(
             stockTokenProgram = PublicKey.TOKEN_PROGRAM_ID,
             programId = programId
         )
+        return SwapPlan(
+            quote = quote,
+            swapInstruction = swapIx
+        )
+    }
+
+    override suspend fun buildSwapInstruction(
+        user: PublicKey,
+        quote: SwapQuote
+    ): TransactionInstruction {
+        return buildSwapPlan(user, quote).swapInstruction
     }
 }
 
