@@ -38,12 +38,17 @@ object NetworkSecurity {
     )
 
     // ──────────────────────────────────────────────────────────────────────────
-    // Keeper service  (https://keeper.jiro.finance)
-    // TODO: populate once the Keeper is deployed behind TLS
+    // Keeper service (Render: https://jiro-4el4.onrender.com)
     // ──────────────────────────────────────────────────────────────────────────
+    private val KEEPER_HOST = try {
+        java.net.URI(BuildConfig.KEEPER_URL).host ?: "jiro-4el4.onrender.com"
+    } catch (e: Exception) {
+        "jiro-4el4.onrender.com"
+    }
+
     private val KEEPER_PINS = arrayOf(
-        "sha256/CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=", // leaf — REPLACE ME
-        "sha256/DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD="  // intermediate CA — REPLACE ME
+        "sha256/8emdl/UmneUm0I4Y/vHzOTQzb9eJwG4voRHtMdNmBPk=", // onrender.com leaf certificate
+        "sha256/kIdp6NNEd8wsugYyyIYFsi1ylMCED3hZbSR8ZFsa/A4="  // Google Trust Services (WE1) intermediate CA
     )
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -79,7 +84,7 @@ object NetworkSecurity {
 
     /** Pre-built client for the Keeper service. */
     fun keeperClient(): OkHttpClient =
-        basePinnedClient("keeper.jiro.finance", *KEEPER_PINS)
+        basePinnedClient(KEEPER_HOST, *KEEPER_PINS)
 
     /** Generic unpinned client for the Solana RPC (host may be user-configured). */
     fun rpcClient(): OkHttpClient = OkHttpClient.Builder()

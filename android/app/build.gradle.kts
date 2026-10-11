@@ -20,15 +20,15 @@ android {
         buildConfigField("String", "PROGRAM_ID", "\"AU4qNgE5qEvuULeKTxJgotM2V8eNygZj14YWDSMU5dqc\"")
         buildConfigField("String", "USDC_MINT", "\"4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU\"")
         buildConfigField("String", "DEVNET_RPC_URL", "\"https://api.devnet.solana.com\"")
-        // Default KEEPER_URL is the emulator loopback; overridden in release below
-        buildConfigField("String", "KEEPER_URL", "\"http://10.0.2.2:3000\"")
+        // Default KEEPER_URL is the live Render deployment
+        buildConfigField("String", "KEEPER_URL", "\"https://jiro-4el4.onrender.com\"")
         // Certificate pinning is disabled by default (overridden per build type below)
         buildConfigField("Boolean", "ENABLE_CERT_PINNING", "false")
     }
 
     buildTypes {
         debug {
-            // Debug keeps verbose logging on; emulator Keeper URL is fine here
+            // Debug keeps verbose logging on; cert pinning disabled
         }
         release {
             isMinifyEnabled = true
@@ -37,8 +37,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // TODO: replace with your production Keeper HTTPS URL before shipping
-            buildConfigField("String", "KEEPER_URL", "\"https://keeper.jiro.finance\"")
+            buildConfigField("String", "KEEPER_URL", "\"https://jiro-4el4.onrender.com\"")
             // Enable TLS certificate pinning in release builds
             buildConfigField("Boolean", "ENABLE_CERT_PINNING", "true")
         }
