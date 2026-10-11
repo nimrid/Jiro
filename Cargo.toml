@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "crates/catalog-core",
+    "tools/discovery",
+]
+exclude = [
+    "program",
+]
+resolver = "2"

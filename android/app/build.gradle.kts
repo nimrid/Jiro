@@ -20,16 +20,27 @@ android {
         buildConfigField("String", "PROGRAM_ID", "\"AU4qNgE5qEvuULeKTxJgotM2V8eNygZj14YWDSMU5dqc\"")
         buildConfigField("String", "USDC_MINT", "\"4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU\"")
         buildConfigField("String", "DEVNET_RPC_URL", "\"https://api.devnet.solana.com\"")
+        // Default KEEPER_URL is the emulator loopback; overridden in release below
         buildConfigField("String", "KEEPER_URL", "\"http://10.0.2.2:3000\"")
+        // Certificate pinning is disabled by default (overridden per build type below)
+        buildConfigField("Boolean", "ENABLE_CERT_PINNING", "false")
     }
 
     buildTypes {
+        debug {
+            // Debug keeps verbose logging on; emulator Keeper URL is fine here
+        }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // TODO: replace with your production Keeper HTTPS URL before shipping
+            buildConfigField("String", "KEEPER_URL", "\"https://keeper.jiro.finance\"")
+            // Enable TLS certificate pinning in release builds
+            buildConfigField("Boolean", "ENABLE_CERT_PINNING", "true")
         }
     }
     compileOptions {
@@ -70,6 +81,8 @@ dependencies {
     implementation(libs.solana.mwa)
     implementation(libs.bouncy.castle)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.coil.compose)
+    implementation(libs.coil.svg)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

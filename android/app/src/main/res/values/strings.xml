@@ -1,0 +1,85 @@
+<resources>
+    <string name="app_name">JIRO</string>
+    <string name="jar_waiting_to_invest">waiting to invest</string>
+    <string name="in_your_jar">In your jar</string>
+    <string name="owed_round_ups">Owed round-ups</string>
+    <string name="withdraw_anytime">Withdraw anytime</string>
+    <string name="invest_button_format">Invest %s</string>
+    <string name="pay_button">Pay</string>
+    <string name="next_stock_prefix">next: </string>
+    <string name="skipped_prefix">Skipped %1$s: %2$s</string>
+    <string name="why_this_stock">Why this stock?</string>
+    <string name="tokenized_stock_notice">Tokenized security on Solana. Not a share.</string>
+    <string name="unaudited_notice">Unaudited program. Balances capped.</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_title">Passive micro-investing from everyday payments</string>
+    <string name="onboarding_connect_wallet">Connect Solana Wallet</string>
+    <string name="onboarding_try_demo">Try demo mode (offline)</string>
+    <string name="onboarding_pick_style">Pick an investment style</string>
+    <string name="onboarding_style_tech">Tech Giants</string>
+    <string name="onboarding_style_tech_desc">High-growth technology leaders (AAPL, MSFT, NVDA)</string>
+    <string name="onboarding_style_index">Index Core</string>
+    <string name="onboarding_style_index_desc">Broad US market index tracker (VOO, QQQ, SPY)</string>
+    <string name="onboarding_style_balanced">Balanced 500</string>
+    <string name="onboarding_style_balanced_desc">Diversified index &amp; blue chips (VOO, AAPL, MSFT, GOOGL)</string>
+    <string name="onboarding_rules_title">Round-up rules</string>
+    <string name="onboarding_step_label">Round-up step</string>
+    <string name="onboarding_boost_label">Multiplier boost</string>
+    <string name="onboarding_cap_label">Jar threshold cap</string>
+    <string name="onboarding_create_jar">Create your jar</string>
+    <string name="onboarding_deposit_notice">Requires ~0.002 SOL refundable account rent</string>
+
+    <!-- Home -->
+    <string name="home_empty_jar_desc">Make a payment to drop your first round-up into the jar.</string>
+    <string name="home_last_drops">Recent drops</string>
+    <string name="home_threshold_format">%1$s of %2$s -> next: %3$s</string>
+    <string name="home_empty_threshold">$0.00 of %1$s -> next: %2$s</string>
+
+    <!-- Pay -->
+    <string name="pay_title">Pay Merchant</string>
+    <string name="pay_scan_qr">Scan Solana Pay QR</string>
+    <string name="pay_merchant_address">Merchant address</string>
+    <string name="pay_amount_label">Amount (USDC)</string>
+    <string name="pay_fee_notice">Network fee: &lt; 0.00001 SOL</string>
+    <string name="pay_confirm_button">Confirm &amp; Drop to Jar</string>
+
+    <!-- Invest -->
+    <string name="invest_title">Pour into stock</string>
+    <string name="invest_market_closed_warn">US equity markets are closed. Order will settle when market opens.</string>
+    <string name="invest_thin_liquidity_warn">Thin pool liquidity. Price impact exceeds 1.00%.</string>
+    <string name="invest_price_impact">Price impact</string>
+    <string name="invest_confirm_button">Confirm pour</string>
+
+    <!-- Portfolio -->
+    <string name="portfolio_title">Portfolio</string>
+    <string name="portfolio_total_value">Total portfolio value</string>
+    <string name="portfolio_contributions">Total contributions</string>
+    <string name="portfolio_units">Token units</string>
+    <string name="portfolio_mint">Token mint</string>
+    <string name="portfolio_view_explorer">View on Solana Explorer</string>
+
+    <!-- Pick -->
+    <string name="pick_title">Stock Catalog</string>
+    <string name="pick_search_hint">Search 1,000+ verified stocks…</string>
+    <string name="filter_all">All</string>
+    <string name="filter_buyable">Buyable</string>
+    <string name="filter_index">Index</string>
+    <string name="filter_tech">Tech</string>
+    <string name="catalog_offline_banner">Using cached catalog snapshot (%s old). Offline mode.</string>
+    <string name="catalog_failed">Failed to load stock catalog</string>
+    <string name="catalog_retry">Retry</string>
+
+    <!-- Activity -->
+    <string name="activity_title">Activity</string>
+    <string name="activity_empty">No activity yet</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings &amp; Safety</string>
+    <string name="settings_cluster">Network: Solana Devnet</string>
+    <string name="settings_withdraw_all">Withdraw all from jar</string>
+    <string name="settings_close_jar">Close jar account</string>
+    <string name="settings_demo_mode">Offline Demo Mode</string>
+    <string name="settings_disclosures_title">Tokenized Stock Disclosures</string>
+    <string name="disclosures_text">Backpack Securities tokenized stocks are Token-2022 digital assets registered under Solana program rules. Issuers retain transfer and freeze authority pursuant to regulatory compliance.</string>
+</resources>

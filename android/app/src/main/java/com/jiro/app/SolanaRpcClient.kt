@@ -1,5 +1,7 @@
 package com.jiro.app
 
+import com.jiro.core.Base58
+import com.jiro.core.PublicKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -9,14 +11,10 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
-import java.util.concurrent.TimeUnit
 
 class SolanaRpcClient(
     val rpcUrl: String = BuildConfig.DEVNET_RPC_URL,
-    private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .build()
+    private val client: OkHttpClient = NetworkSecurity.rpcClient()
 ) {
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
@@ -70,9 +68,8 @@ class SolanaRpcClient(
 
     data class VaultConfigAccount(
         val owner: PublicKey,
-        val destination: PublicKey,
-        val keeper: PublicKey,
-        val threshold: Long,
+        val mint: PublicKey,
+        val vaultId: Byte,
         val maxBalance: Long,
         val bump: Int
     )
@@ -97,20 +94,19 @@ class SolanaRpcClient(
             val base64Data = dataArray.getString(0)
             val bytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
 
-            // Layout in Anchor:
+            // Layout in Anchor VaultConfig (82 bytes):
             // 8 bytes discriminator
             // 32 bytes owner
-            // 32 bytes destination
-            // 32 bytes keeper
-            // 8 bytes threshold
+            // 32 bytes mint
+            // 1 byte vault_id
             // 8 bytes max_balance
             // 1 byte bump
-            if (bytes.size < 8 + 32 + 32 + 32 + 8 + 8 + 1) return@withContext null
+            if (bytes.size < 8 + 32 + 32 + 1 + 8 + 1) return@withContext null
 
             var offset = 8
             val ownerBytes = bytes.copyOfRange(offset, offset + 32); offset += 32
-            val destBytes = bytes.copyOfRange(offset, offset + 32); offset += 32
-            val keeperBytes = bytes.copyOfRange(offset, offset + 32); offset += 32
+            val mintBytes = bytes.copyOfRange(offset, offset + 32); offset += 32
+            val vaultId = bytes[offset]; offset += 1
 
             fun readU64(start: Int): Long {
                 var v = 0L
@@ -120,15 +116,13 @@ class SolanaRpcClient(
                 return v
             }
 
-            val threshold = readU64(offset); offset += 8
             val maxBalance = readU64(offset); offset += 8
             val bump = bytes[offset].toInt() and 0xFF
 
             VaultConfigAccount(
                 owner = PublicKey(ownerBytes),
-                destination = PublicKey(destBytes),
-                keeper = PublicKey(keeperBytes),
-                threshold = threshold,
+                mint = PublicKey(mintBytes),
+                vaultId = vaultId,
                 maxBalance = maxBalance,
                 bump = bump
             )
@@ -138,17 +132,18 @@ class SolanaRpcClient(
     }
 
     private fun postRpc(payload: JSONObject): JSONObject {
+        val body = payload.toString().toRequestBody(jsonMediaType)
         val request = Request.Builder()
             .url(rpcUrl)
-            .post(payload.toString().toRequestBody(jsonMediaType))
+            .post(body)
             .build()
 
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                throw IOException("RPC request failed with HTTP ${response.code}: ${response.message}")
+                throw IOException("RPC request failed with code ${response.code}: ${response.message}")
             }
-            val body = response.body?.string() ?: throw IOException("Empty RPC response")
-            return JSONObject(body)
+            val responseBody = response.body?.string() ?: throw IOException("Empty response from RPC")
+            return JSONObject(responseBody)
         }
     }
 }

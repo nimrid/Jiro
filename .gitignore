@@ -20,7 +20,6 @@ deploy/
 node_modules/
 **/node_modules/
 *keypair*.json
-!program/vault-keypair.json
 
 # Android
 .gradle/

@@ -129,7 +129,16 @@ object InvestTxBuilder {
             return TransactionPlan.Single(atomicMessage)
         }
 
-        // Fallback: Two-transaction plan
+        // ⚠️ ATOMICITY WARNING: The two-step plan does NOT provide atomicity.
+        // Step 1 withdraws USDC from the vault; Step 2 swaps it.
+        // If step 2 fails (e.g. expired quote, RPC error), the user's USDC is
+        // already in their wallet and is safe, but the investment did not execute.
+        //
+        // CALLER RESPONSIBILITY:
+        //  - Re-fetch a fresh blockhash immediately before building/signing step 2.
+        //  - Re-validate quote freshness before signing step 2.
+        //  - Do NOT reuse the same blockhash for both steps.
+
         // Step 1: Withdraw from vault into user's USDC ATA
         val step1 = MessageV0.compile(
             payer = user,
@@ -140,7 +149,9 @@ object InvestTxBuilder {
             recentBlockhash = recentBlockhash
         )
 
-        // Step 2: Swap USDC into chosen stock
+        // Step 2: Swap USDC into chosen stock.
+        // Uses ByteArray(32) as a placeholder — caller MUST replace with a fresh blockhash.
+        val step2Blockhash = ByteArray(32) // placeholder; caller must supply fresh blockhash before signing
         val step2Ixs = mutableListOf<TransactionInstruction>()
         step2Ixs.addAll(computeBudgetIxs)
         step2Ixs.addAll(swapPlan.setupInstructions)
@@ -150,7 +161,7 @@ object InvestTxBuilder {
         val step2 = MessageV0.compile(
             payer = user,
             instructions = step2Ixs,
-            recentBlockhash = recentBlockhash,
+            recentBlockhash = step2Blockhash,
             lookupTables = swapPlan.lookupTables
         )
 

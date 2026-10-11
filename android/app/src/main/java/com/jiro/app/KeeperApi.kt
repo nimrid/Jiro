@@ -8,7 +8,7 @@ import org.json.JSONObject
 
 class KeeperApi(
     private val baseUrl: String = BuildConfig.KEEPER_URL,
-    private val client: OkHttpClient = OkHttpClient()
+    private val client: OkHttpClient = NetworkSecurity.keeperClient()
 ) {
     data class KeeperStatus(
         val healthy: Boolean,

@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "as_of": "2026-10-09T13:38:20.626675+00:00",
+  "presets": {
+    "big_tech": {
+      "name": "Big Tech Leaders",
+      "description": "Top market capitalization technology innovators",
+      "tickers": [
+        "AAPL.US",
+        "MSFT.US",
+        "NVDA.US",
+        "AMZN.US",
+        "GOOGL.US",
+        "META.US",
+        "TSLA.US"
+      ]
+    },
+    "index": {
+      "name": "Index ETFs",
+      "description": "Broad-market low-cost index funds representing US economy",
+      "tickers": [
+        "VOO.US",
+        "SPY.US",
+        "QQQ.US"
+      ]
+    }
+  }
+}

@@ -1,17 +1,21 @@
 package com.jiro.app
 
-import android.app.Activity
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
+import com.solana.mobilewalletadapter.clientlib.ConnectionIdentity
+import com.solana.mobilewalletadapter.clientlib.DefaultTransactionParams
+import com.solana.mobilewalletadapter.clientlib.MobileWalletAdapter
+import com.solana.mobilewalletadapter.clientlib.Solana
+import com.solana.mobilewalletadapter.clientlib.TransactionResult
 import com.solana.mobilewalletadapter.clientlib.protocol.MobileWalletAdapterClient
-import com.solana.mobilewalletadapter.clientlib.scenario.LocalAssociationIntentCreator
-import com.solana.mobilewalletadapter.clientlib.scenario.LocalAssociationScenario
-import com.solana.mobilewalletadapter.clientlib.scenario.Scenario
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.jiro.core.Base58
+import com.jiro.core.PublicKey
 import java.io.IOException
 
 data class WalletSession(
@@ -23,29 +27,34 @@ data class WalletSession(
 class MwaRepository(private val context: Context) {
 
     private val identityUri = Uri.parse("https://jiro.finance")
-    private val iconUri = Uri.parse("https://jiro.finance/icon.png")
-    private val identityName = "JIRO Round-Up"
-    private val cluster = "devnet"
+    // Official MWA requirement: iconUri MUST be a relative URI, e.g. "favicon.ico"
+    private val iconUri = Uri.parse("favicon.ico")
+    private val identityName = "JIRO"
 
-    private val prefs: SharedPreferences by lazy {
-        try {
-            val masterKey = MasterKey.Builder(context)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
-            EncryptedSharedPreferences.create(
-                context,
-                "jiro_mwa_prefs",
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
-        } catch (e: Exception) {
-            context.getSharedPreferences("jiro_mwa_prefs_fallback", Context.MODE_PRIVATE)
-        }
+    val walletAdapter = MobileWalletAdapter(
+        connectionIdentity = ConnectionIdentity(
+            identityUri = identityUri,
+            iconUri = iconUri,
+            identityName = identityName
+        )
+    ).apply {
+        blockchain = Solana.Devnet
+        @Suppress("DEPRECATION")
+        rpcCluster = com.solana.mobilewalletadapter.clientlib.RpcCluster.Devnet
     }
 
-    fun isWalletInstalled(): Boolean {
-        return LocalAssociationIntentCreator.isWalletEndpointAvailable(context.packageManager)
+    private val prefs: SharedPreferences by lazy {
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        // Never fall back to unencrypted prefs — fail loudly if the keystore is broken.
+        EncryptedSharedPreferences.create(
+            context,
+            "jiro_mwa_prefs",
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
     }
 
     fun getCachedPublicKey(): PublicKey? {
@@ -67,6 +76,7 @@ class MwaRepository(private val context: Context) {
             .putString("cached_auth_token", session.authToken)
             .putString("cached_label", session.accountLabel)
             .apply()
+        walletAdapter.authToken = session.authToken
     }
 
     fun clearSession() {
@@ -75,108 +85,122 @@ class MwaRepository(private val context: Context) {
             .remove("cached_auth_token")
             .remove("cached_label")
             .apply()
+        walletAdapter.authToken = null
     }
 
     /**
-     * Connects to a real Solana wallet installed on device via MWA 2.0.
-     * Absolutely NO mock wallets.
+     * Connects to installed wallet (e.g. Solflare) via official MWA clientlib-ktx.
      */
-    suspend fun connectWallet(activity: Activity): Result<WalletSession> = withContext(Dispatchers.IO) {
-        if (!isWalletInstalled()) {
-            return@withContext Result.failure(
-                IllegalStateException("No MWA-compatible Solana wallet found on this device. Please install Phantom, Solflare, or ensure Seed Vault is active.")
-            )
+    private fun parseSession(authResult: MobileWalletAdapterClient.AuthorizationResult): WalletSession {
+        val firstAccount = authResult.accounts?.firstOrNull()
+        @Suppress("DEPRECATION")
+        val rawKey = firstAccount?.publicKey ?: authResult.publicKey
+        @Suppress("DEPRECATION")
+        val label = firstAccount?.accountLabel ?: authResult.accountLabel
+        return WalletSession(
+            publicKey = PublicKey(rawKey),
+            authToken = authResult.authToken,
+            accountLabel = label
+        )
+    }
+
+    suspend fun connectWallet(sender: ActivityResultSender): Result<WalletSession> = withContext(Dispatchers.IO) {
+        val cachedToken = getCachedAuthToken()
+        if (cachedToken != null) {
+            walletAdapter.authToken = cachedToken
         }
 
-        val scenario = LocalAssociationScenario(Scenario.DEFAULT_CLIENT_TIMEOUT_MS)
-        try {
-            val intent = LocalAssociationIntentCreator.createAssociationIntent(null, scenario.port, scenario.session)
-            activity.startActivity(intent)
-
-            val client = scenario.start().get()
-            val cachedToken = getCachedAuthToken()
-
-            val authResult = try {
-                if (cachedToken != null) {
-                    client.reauthorize(identityUri, iconUri, identityName, cachedToken).get()
-                } else {
-                    client.authorize(identityUri, iconUri, identityName, cluster).get()
-                }
-            } catch (e: Exception) {
-                // Reauthorize might fail if token expired; fallback to fresh authorize
-                client.authorize(identityUri, iconUri, identityName, cluster).get()
+        if (BuildConfig.DEBUG) android.util.Log.d("MWA_REPO", "Calling walletAdapter.connect(sender)...")
+        val result = walletAdapter.connect(sender)
+        when (result) {
+            is TransactionResult.Success -> {
+                if (BuildConfig.DEBUG) android.util.Log.d("MWA_REPO", "walletAdapter.connect Success!")
+                val session = parseSession(result.authResult)
+                saveSession(session)
+                Result.success(session)
             }
-
-            val pubkey = PublicKey(authResult.publicKey)
-            val session = WalletSession(
-                publicKey = pubkey,
-                authToken = authResult.authToken,
-                accountLabel = authResult.accountLabel
-            )
-            saveSession(session)
-            Result.success(session)
-        } catch (e: Exception) {
-            Result.failure(e)
-        } finally {
-            try {
-                scenario.close().get()
-            } catch (ignored: Exception) {}
+            is TransactionResult.NoWalletFound -> {
+                if (BuildConfig.DEBUG) android.util.Log.e("MWA_REPO", "walletAdapter.connect NoWalletFound: ${result.message}")
+                Result.failure(IllegalStateException(result.message))
+            }
+            is TransactionResult.Failure -> {
+                if (BuildConfig.DEBUG) android.util.Log.e("MWA_REPO", "walletAdapter.connect Failure: ${result.message}", result.e)
+                // Only retry fresh authorization if the failure was specifically due to an invalid cached auth token
+                if (cachedToken != null && result.message.contains("Auth token invalid", ignoreCase = true)) {
+                    clearSession()
+                    if (BuildConfig.DEBUG) android.util.Log.d("MWA_REPO", "Retrying connect after clearing expired auth token...")
+                    val retryResult = walletAdapter.connect(sender)
+                    if (retryResult is TransactionResult.Success) {
+                        val session = parseSession(retryResult.authResult)
+                        saveSession(session)
+                        return@withContext Result.success(session)
+                    }
+                }
+                Result.failure(result.e ?: IllegalStateException(result.message))
+            }
         }
     }
 
     /**
-     * Signs and sends a transaction through the connected real wallet.
-     * Returns the list of Solana transaction signatures (Base58).
+     * Signs and sends a transaction through the connected wallet.
+     * Evaluates transaction builder lambda inside the MWA transact block so the
+     * recent blockhash is fetched right when the wallet session is established.
      */
     suspend fun signAndSendTransaction(
-        activity: Activity,
-        transactionPayload: ByteArray
+        sender: ActivityResultSender,
+        onAwaitingApproval: (() -> Unit)? = null,
+        buildTransaction: suspend () -> ByteArray
     ): Result<String> = withContext(Dispatchers.IO) {
-        if (!isWalletInstalled()) {
-            return@withContext Result.failure(
-                IllegalStateException("No MWA-compatible Solana wallet found.")
-            )
+        val cachedToken = getCachedAuthToken()
+        if (BuildConfig.DEBUG) android.util.Log.i("MWA_REPO", "signAndSendTransaction started.")
+        if (cachedToken != null) {
+            walletAdapter.authToken = cachedToken
         }
 
-        val scenario = LocalAssociationScenario(Scenario.DEFAULT_CLIENT_TIMEOUT_MS)
-        try {
-            val intent = LocalAssociationIntentCreator.createAssociationIntent(null, scenario.port, scenario.session)
-            activity.startActivity(intent)
+        val result = walletAdapter.transact(sender) { authResult ->
+            if (BuildConfig.DEBUG) android.util.Log.i("MWA_REPO", "transact session authorized.")
+            val session = parseSession(authResult)
+            saveSession(session)
 
-            val client = scenario.start().get()
-            val cachedToken = getCachedAuthToken()
+            if (BuildConfig.DEBUG) android.util.Log.i("MWA_REPO", "Executing buildTransaction callback...")
+            val payload = buildTransaction()
+            if (BuildConfig.DEBUG) android.util.Log.i("MWA_REPO", "buildTransaction payload ready (${payload.size} bytes)")
 
-            val authResult = try {
-                if (cachedToken != null) {
-                    client.reauthorize(identityUri, iconUri, identityName, cachedToken).get()
-                } else {
-                    client.authorize(identityUri, iconUri, identityName, cluster).get()
-                }
-            } catch (e: Exception) {
-                client.authorize(identityUri, iconUri, identityName, cluster).get()
-            }
-            saveSession(
-                WalletSession(
-                    publicKey = PublicKey(authResult.publicKey),
-                    authToken = authResult.authToken,
-                    accountLabel = authResult.accountLabel
-                )
+            onAwaitingApproval?.invoke()
+
+            if (BuildConfig.DEBUG) android.util.Log.i("MWA_REPO", "Dispatching signAndSendTransactions to wallet...")
+            val sendResult = signAndSendTransactions(
+                arrayOf(payload),
+                DefaultTransactionParams
             )
-
-            val signAndSendResult = client.signAndSendTransactions(arrayOf(transactionPayload), null).get()
-            val signatures = signAndSendResult.signatures
+            if (BuildConfig.DEBUG) android.util.Log.i("MWA_REPO", "signAndSendTransactions returned with ${sendResult.signatures.size} signatures")
+            val signatures = sendResult.signatures
             if (signatures.isEmpty() || signatures[0].isEmpty()) {
-                return@withContext Result.failure(IOException("Wallet returned empty transaction signature"))
+                throw IOException("Wallet returned empty transaction signature")
             }
+            val sigB58 = Base58.encode(signatures[0])
+            if (BuildConfig.DEBUG) android.util.Log.i("MWA_REPO", "Transaction signature success.")
+            sigB58
+        }
 
-            val sigBase58 = Base58.encode(signatures[0])
-            Result.success(sigBase58)
-        } catch (e: Exception) {
-            Result.failure(e)
-        } finally {
-            try {
-                scenario.close().get()
-            } catch (ignored: Exception) {}
+        when (result) {
+            is TransactionResult.Success -> {
+                if (BuildConfig.DEBUG) android.util.Log.i("MWA_REPO", "TransactionResult.Success")
+                Result.success(result.payload)
+            }
+            is TransactionResult.NoWalletFound -> {
+                if (BuildConfig.DEBUG) android.util.Log.e("MWA_REPO", "TransactionResult.NoWalletFound: ${result.message}")
+                Result.failure(IllegalStateException(result.message))
+            }
+            is TransactionResult.Failure -> {
+                if (BuildConfig.DEBUG) android.util.Log.e("MWA_REPO", "TransactionResult.Failure: ${result.message}", result.e)
+                Result.failure(result.e ?: IllegalStateException(result.message))
+            }
         }
     }
+
+    suspend fun signAndSendTransaction(
+        sender: ActivityResultSender,
+        transactionPayload: ByteArray
+    ): Result<String> = signAndSendTransaction(sender) { transactionPayload }
 }

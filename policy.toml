@@ -1,0 +1,92 @@
+# policy.toml: Token-2022 extension evaluation policy for Backpack Securities assets
+
+[extensions.metadata_pointer]
+action = "OK"
+description = "Token Metadata Pointer extension points to on-chain metadata"
+
+[extensions.token_metadata]
+action = "OK"
+description = "On-chain token metadata (name, symbol, uri)"
+
+[extensions.permanent_delegate]
+action = "WARN"
+description = "Issuer holds permanent delegate authority and can transfer tokens"
+disclosure = "Issuer has administrative authority over token transfers for regulatory compliance."
+
+[extensions.pausable]
+action = "WARN"
+description = "Issuer can pause transfers during market halt or corporate action"
+disclosure = "Transfers may be temporarily paused by the issuer."
+
+[extensions.pausable_config]
+action = "WARN"
+description = "Issuer can pause transfers during market halt or corporate action"
+disclosure = "Transfers may be temporarily paused by the issuer."
+
+[extensions.freeze_authority]
+action = "WARN"
+description = "Mint has freeze authority enabled"
+disclosure = "Issuer maintains freeze authority for compliance."
+
+[extensions.scaled_ui_amount]
+action = "WARN"
+description = "Token uses scaled UI amount; math scales raw amount by multiplier"
+disclosure = "Token balance displays using scaled UI amounts."
+
+[extensions.scaled_ui_amount_config]
+action = "WARN"
+description = "Token uses scaled UI amount; math scales raw amount by multiplier"
+disclosure = "Token balance displays using scaled UI amounts."
+
+[extensions.transfer_fee]
+action = "WARN"
+description = "Token incurs a transfer fee upon movement"
+disclosure = "A transfer fee applies to token movements."
+
+[extensions.transfer_fee_config]
+action = "WARN"
+description = "Token incurs a transfer fee upon movement"
+disclosure = "A transfer fee applies to token movements."
+
+[extensions.transfer_hook]
+action = "WARN"
+description = "Token invokes a transfer hook program on transfer"
+disclosure = "Transfers invoke a verified issuer compliance hook."
+allowed_programs = []
+
+[extensions.default_account_state]
+action = "WARN"
+description = "Default account state extension configured (OK if initialized, BLOCK if frozen)"
+disclosure = "Account default state is initialized upon creation."
+
+[extensions.confidential_transfer]
+action = "WARN"
+description = "Confidential transfer extension is configured by issuer on mint but optional for transfers"
+disclosure = "Issuer enables optional confidential transfer extension."
+
+[extensions.confidential_transfer_mint]
+action = "WARN"
+description = "Confidential transfer extension is configured by issuer on mint but optional for transfers"
+disclosure = "Issuer enables optional confidential transfer extension."
+
+[extensions.interest_bearing]
+action = "WARN"
+description = "Interest bearing config modifies rate over time"
+
+[extensions.interest_bearing_config]
+action = "WARN"
+description = "Interest bearing config modifies rate over time"
+
+[extensions.non_transferable]
+action = "BLOCK"
+description = "Tokens cannot be transferred between accounts"
+
+[extensions.mint_close_authority]
+action = "BLOCK"
+description = "Mint close authority allows destroying the mint"
+
+[defaults]
+unknown_extension = "BLOCK"
+max_impact_bps_at_5_usd = 100
+max_impact_bps_at_25_usd = 250
+min_liquidity_route = true
