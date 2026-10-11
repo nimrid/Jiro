@@ -1,0 +1,11 @@
+target/
+**/target/
+android/
+program/
+.git/
+.env
+.env.*
+*.apk
+*.aab
+.gradle/
+.idea/

@@ -1,7 +1,17 @@
 use keeper::client::BackpackClient;
+use keeper::server::start_server;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 && args[1] == "discover" {
+        run_discovery().await
+    } else {
+        start_server().await
+    }
+}
+
+async fn run_discovery() -> Result<(), Box<dyn std::error::Error>> {
     let client = BackpackClient::new(None, None);
 
     println!("=== WORKSTREAM B: MARKET & ASSET DISCOVERY ===\n");

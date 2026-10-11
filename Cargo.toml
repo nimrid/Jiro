@@ -2,6 +2,7 @@
 members = [
     "crates/catalog-core",
     "tools/discovery",
+    "keeper",
 ]
 exclude = [
     "program",

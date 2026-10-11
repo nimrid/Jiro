@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: jiro-keeper
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon
+    healthCheckPath: /healthz
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: SOLANA_RPC_URL
+        value: https://api.devnet.solana.com
+      - key: JUPITER_API_KEY
+        sync: false
+      - key: BACKPACK_API_KEY
+        sync: false
+      - key: BACKPACK_API_SECRET
+        sync: false
