@@ -13,8 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy workspace manifests
-COPY Cargo.toml Cargo.lock ./
+# Copy workspace manifests (Cargo.lock* wildcard won't fail if absent)
+COPY Cargo.toml Cargo.lock* ./
 COPY crates/ crates/
 COPY tools/ tools/
 COPY keeper/ keeper/
@@ -29,6 +29,7 @@ FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libssl3 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -37,7 +38,7 @@ WORKDIR /app
 COPY --from=builder /app/target/release/keeper /usr/local/bin/keeper
 
 # Copy catalog snapshot for /v1/catalog endpoint
-COPY --from=builder /app/docs/catalog_snapshot.json /app/docs/catalog_snapshot.json
+COPY --from=builder /app/docs/catalog_snapshot.json ./docs/catalog_snapshot.json
 
 ENV PORT=3000
 EXPOSE 3000
