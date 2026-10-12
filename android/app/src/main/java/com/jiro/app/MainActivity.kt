@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
@@ -40,9 +41,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        TargetedSenderHelper.attachTargetPackageHook(activityResultSender)
-        TargetedSenderHelper.initPreferredPackage(this)
-
+        enableEdgeToEdge()
         handleSolanaPayDeepLink(intent)
 
         setContent {
@@ -56,6 +55,7 @@ class MainActivity : ComponentActivity() {
                     onInvestClicked = { viewModel.showInvestSheet(true) },
                     onSettingsClicked = { viewModel.showSettings(true) },
                     onConnectWallet = { viewModel.connectWallet(activityResultSender) },
+                    onStepChange = { viewModel.setOnboardingStep(it) },
                     onTryDemo = { viewModel.startDemoMode() },
                     onCompleteOnboarding = { style, step, boost, threshold ->
                         viewModel.completeOnboarding(style, step, boost, threshold)
@@ -67,7 +67,7 @@ class MainActivity : ComponentActivity() {
                     onConfirmInvest = { viewModel.executeInvest(activityResultSender) },
                     onWithdrawAll = { viewModel.withdrawAll(activityResultSender) },
                     onCloseJar = { viewModel.closeJar(activityResultSender) },
-                    onDisconnectWallet = { viewModel.disconnectWallet() },
+                    onDisconnectWallet = { viewModel.disconnectWallet(activityResultSender) },
                     onDemoModeToggle = { viewModel.toggleDemoMode(it) },
                     onRulesChanged = { step, boost, cap -> viewModel.setRules(step, boost, cap) },
                     onBasketChanged = { viewModel.updateBasket(it) },
@@ -116,6 +116,7 @@ fun JiroMainApp(
     onInvestClicked: () -> Unit,
     onSettingsClicked: () -> Unit,
     onConnectWallet: () -> Unit,
+    onStepChange: (OnboardingStep) -> Unit,
     onTryDemo: () -> Unit,
     onCompleteOnboarding: (InvestmentStyle, Double, Int, Double) -> Unit,
     onPaymentInputChanged: (String) -> Unit,
@@ -140,10 +141,10 @@ fun JiroMainApp(
             .fillMaxSize()
             .background(JiroColors.Ink)
     ) {
-        if (!state.isOnboardingComplete && !state.isConnected && !state.isDemoMode) {
+        if (!state.isOnboardingComplete && !state.isDemoMode) {
             OnboardingScreen(
                 currentStep = state.onboardingStep,
-                onStepChange = {},
+                onStepChange = onStepChange,
                 onConnectWallet = onConnectWallet,
                 onTryDemo = onTryDemo,
                 onCreateJar = { style, step, boost, threshold ->
@@ -292,7 +293,9 @@ fun JiroMainApp(
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = 40.dp, start = 16.dp, end = 16.dp)
+                    .statusBarsPadding()
+                    .padding(top = 10.dp, start = 16.dp, end = 16.dp)
+                    .widthIn(max = 560.dp)
             ) {
                 Card(
                     modifier = Modifier

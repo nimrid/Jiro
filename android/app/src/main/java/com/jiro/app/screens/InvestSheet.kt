@@ -53,7 +53,9 @@ fun InvestSheet(
 
     Card(
         modifier = modifier
+            .widthIn(max = 520.dp)
             .fillMaxWidth()
+            .navigationBarsPadding()
             .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
             .border(1.dp, JiroColors.Line, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)),
         colors = CardDefaults.cardColors(containerColor = JiroColors.SurfaceElevated),
@@ -62,7 +64,7 @@ fun InvestSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(24.dp)
+                .padding(20.dp)
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {

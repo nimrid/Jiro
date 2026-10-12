@@ -66,6 +66,10 @@ class MwaRepository(private val context: Context) {
         }
     }
 
+    fun getCachedAccountLabel(): String? {
+        return prefs.getString("cached_label", null)
+    }
+
     private fun getCachedAuthToken(): String? {
         return prefs.getString("cached_auth_token", null)
     }
@@ -86,6 +90,18 @@ class MwaRepository(private val context: Context) {
             .remove("cached_label")
             .apply()
         walletAdapter.authToken = null
+    }
+
+    suspend fun disconnectWallet(sender: ActivityResultSender): Result<Unit> = withContext(Dispatchers.IO) {
+        if (BuildConfig.DEBUG) android.util.Log.d("MWA_REPO", "Calling walletAdapter.disconnect(sender)...")
+        try {
+            walletAdapter.disconnect(sender)
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) android.util.Log.w("MWA_REPO", "walletAdapter.disconnect error", e)
+        } finally {
+            clearSession()
+        }
+        Result.success(Unit)
     }
 
     /**
@@ -111,7 +127,15 @@ class MwaRepository(private val context: Context) {
         }
 
         if (BuildConfig.DEBUG) android.util.Log.d("MWA_REPO", "Calling walletAdapter.connect(sender)...")
-        val result = walletAdapter.connect(sender)
+        var result = walletAdapter.connect(sender)
+
+        // If connect failed with a cached token, clear the stale token and retry fresh authorization
+        if (result is TransactionResult.Failure && cachedToken != null) {
+            if (BuildConfig.DEBUG) android.util.Log.w("MWA_REPO", "Connect with cached token failed (${result.message}). Retrying fresh connection...")
+            clearSession()
+            result = walletAdapter.connect(sender)
+        }
+
         when (result) {
             is TransactionResult.Success -> {
                 if (BuildConfig.DEBUG) android.util.Log.d("MWA_REPO", "walletAdapter.connect Success!")
@@ -125,17 +149,6 @@ class MwaRepository(private val context: Context) {
             }
             is TransactionResult.Failure -> {
                 if (BuildConfig.DEBUG) android.util.Log.e("MWA_REPO", "walletAdapter.connect Failure: ${result.message}", result.e)
-                // Only retry fresh authorization if the failure was specifically due to an invalid cached auth token
-                if (cachedToken != null && result.message.contains("Auth token invalid", ignoreCase = true)) {
-                    clearSession()
-                    if (BuildConfig.DEBUG) android.util.Log.d("MWA_REPO", "Retrying connect after clearing expired auth token...")
-                    val retryResult = walletAdapter.connect(sender)
-                    if (retryResult is TransactionResult.Success) {
-                        val session = parseSession(retryResult.authResult)
-                        saveSession(session)
-                        return@withContext Result.success(session)
-                    }
-                }
                 Result.failure(result.e ?: IllegalStateException(result.message))
             }
         }
@@ -157,7 +170,7 @@ class MwaRepository(private val context: Context) {
             walletAdapter.authToken = cachedToken
         }
 
-        val result = walletAdapter.transact(sender) { authResult ->
+        var result = walletAdapter.transact(sender) { authResult ->
             if (BuildConfig.DEBUG) android.util.Log.i("MWA_REPO", "transact session authorized.")
             val session = parseSession(authResult)
             saveSession(session)
@@ -179,8 +192,27 @@ class MwaRepository(private val context: Context) {
                 throw IOException("Wallet returned empty transaction signature")
             }
             val sigB58 = Base58.encode(signatures[0])
-            if (BuildConfig.DEBUG) android.util.Log.i("MWA_REPO", "Transaction signature success.")
+            if (BuildConfig.DEBUG) android.util.Log.i("MWA_REPO", "Transaction signature success: $sigB58")
             sigB58
+        }
+
+        // If transact failed with cached token, retry once with fresh authorization
+        if (result is TransactionResult.Failure && cachedToken != null) {
+            if (BuildConfig.DEBUG) android.util.Log.w("MWA_REPO", "transact failed with cached token (${result.message}). Retrying fresh transaction...")
+            walletAdapter.authToken = null
+            clearSession()
+            result = walletAdapter.transact(sender) { authResult ->
+                val session = parseSession(authResult)
+                saveSession(session)
+                val payload = buildTransaction()
+                onAwaitingApproval?.invoke()
+                val sendResult = signAndSendTransactions(arrayOf(payload), DefaultTransactionParams)
+                val signatures = sendResult.signatures
+                if (signatures.isEmpty() || signatures[0].isEmpty()) {
+                    throw IOException("Wallet returned empty transaction signature")
+                }
+                Base58.encode(signatures[0])
+            }
         }
 
         when (result) {

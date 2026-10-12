@@ -12,10 +12,16 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 
+import android.util.Log
+
 class SolanaRpcClient(
     val rpcUrl: String = BuildConfig.DEVNET_RPC_URL,
     private val client: OkHttpClient = NetworkSecurity.rpcClient()
 ) {
+    companion object {
+        private const val TAG = "SolanaRpcClient"
+    }
+
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
     suspend fun getLatestBlockhash(): String = withContext(Dispatchers.IO) {
@@ -30,7 +36,9 @@ class SolanaRpcClient(
         val result = json.optJSONObject("result")
             ?: throw IOException("No result in getLatestBlockhash: $json")
         val value = result.getJSONObject("value")
-        value.getString("blockhash")
+        val blockhash = value.getString("blockhash")
+        Log.d(TAG, "Latest blockhash: $blockhash")
+        blockhash
     }
 
     suspend fun getSolBalance(address: String): Long = withContext(Dispatchers.IO) {
@@ -43,7 +51,9 @@ class SolanaRpcClient(
 
         val json = postRpc(payload)
         val result = json.optJSONObject("result") ?: return@withContext 0L
-        result.optLong("value", 0L)
+        val bal = result.optLong("value", 0L)
+        Log.d(TAG, "SOL balance for $address: $bal")
+        bal
     }
 
     suspend fun getTokenAccountBalance(tokenAccountAddress: String): Long = withContext(Dispatchers.IO) {
@@ -56,12 +66,17 @@ class SolanaRpcClient(
 
         try {
             val json = postRpc(payload)
+            if (json.has("error")) {
+                Log.w(TAG, "getTokenAccountBalance rpc error: ${json.optJSONObject("error")}")
+            }
             val result = json.optJSONObject("result") ?: return@withContext 0L
             val value = result.optJSONObject("value") ?: return@withContext 0L
             val amountStr = value.optString("amount", "0")
-            amountStr.toLongOrNull() ?: 0L
+            val amount = amountStr.toLongOrNull() ?: 0L
+            Log.d(TAG, "Token balance for $tokenAccountAddress: $amount")
+            amount
         } catch (e: Exception) {
-            // Account does not exist or has no balance yet
+            Log.e(TAG, "getTokenAccountBalance exception for $tokenAccountAddress: ${e.message}", e)
             0L
         }
     }
@@ -131,7 +146,46 @@ class SolanaRpcClient(
         }
     }
 
+    data class SignatureInfo(
+        val signature: String,
+        val slot: Long,
+        val blockTime: Long?,
+        val err: String?
+    )
+
+    suspend fun getSignaturesForAddress(address: String, limit: Int = 10): List<SignatureInfo> = withContext(Dispatchers.IO) {
+        val payload = JSONObject().apply {
+            put("jsonrpc", "2.0")
+            put("id", 1)
+            put("method", "getSignaturesForAddress")
+            put("params", JSONArray().put(address).put(JSONObject().put("limit", limit)))
+        }
+
+        try {
+            val json = postRpc(payload)
+            val result = json.optJSONArray("result") ?: return@withContext emptyList()
+            val list = mutableListOf<SignatureInfo>()
+            for (i in 0 until result.length()) {
+                val obj = result.getJSONObject(i)
+                list.add(
+                    SignatureInfo(
+                        signature = obj.getString("signature"),
+                        slot = obj.optLong("slot", 0L),
+                        blockTime = if (obj.has("blockTime") && !obj.isNull("blockTime")) obj.getLong("blockTime") else null,
+                        err = if (obj.has("err") && !obj.isNull("err")) obj.get("err").toString() else null
+                    )
+                )
+            }
+            list
+        } catch (e: Exception) {
+            Log.e(TAG, "getSignaturesForAddress error: ${e.message}", e)
+            emptyList()
+        }
+    }
+
     private fun postRpc(payload: JSONObject): JSONObject {
+        val method = payload.optString("method", "unknown")
+        Log.d(TAG, "postRpc -> $method to $rpcUrl")
         val body = payload.toString().toRequestBody(jsonMediaType)
         val request = Request.Builder()
             .url(rpcUrl)
@@ -140,9 +194,11 @@ class SolanaRpcClient(
 
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
+                Log.e(TAG, "postRpc failed for $method: code ${response.code} ${response.message}")
                 throw IOException("RPC request failed with code ${response.code}: ${response.message}")
             }
             val responseBody = response.body?.string() ?: throw IOException("Empty response from RPC")
+            Log.d(TAG, "postRpc <- $method status ${response.code}")
             return JSONObject(responseBody)
         }
     }

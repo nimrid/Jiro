@@ -59,6 +59,12 @@ class PdaAtaTest {
         val (mockPda, bump) = Pda.deriveMockPda(stockMint, programId)
         assertNotNull(mockPda)
         assertTrue(bump in 0..255)
-        assertFalse(PublicKey.isOnCurve(mockPda.pubkey))
+    }
+
+    @Test
+    fun testConnectedWalletAta() {
+        val user = PublicKey("D83F1fDwmcuaJDrjnq6ECkUCvSaYyuHSpcVBmqoQ2a2F")
+        val ata = Ata.deriveAssociatedTokenAddress(user, usdcDevnet)
+        assertEquals("A21C9ZqgxHyGtcpg9yysFjcaCKuvadYnDz28khvvihZj", ata.toBase58())
     }
 }

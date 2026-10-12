@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -55,6 +56,7 @@ fun PickScreen(
     var searchQuery by remember { mutableStateOf("") }
     var selectedFilter by remember { mutableStateOf(StockFilter.ALL) }
     var selectedStock by remember { mutableStateOf<CatalogEntry?>(null) }
+    val spec = rememberAdaptiveSpec()
 
     val filteredEntries = remember(catalog, searchQuery, selectedFilter) {
         catalog.filter { entry ->
@@ -73,70 +75,76 @@ fun PickScreen(
         }
     }
 
-    Column(
+    AdaptiveContainer(
+        maxWidth = 600.dp,
         modifier = modifier
             .fillMaxSize()
             .background(JiroColors.Ink)
     ) {
-        // Header
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 12.dp)
+            modifier = Modifier.fillMaxSize()
         ) {
-            Text(
-                text = stringResource(R.string.pick_title),
-                style = JiroTypography.HeadlineMedium,
-                color = JiroColors.Text
-            )
-
-            if (isOffline) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = JiroColors.SurfaceElevated),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.catalog_offline_banner, "${snapshotAgeMinutes}m"),
-                        color = JiroColors.Sky,
-                        fontSize = 11.sp,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Search bar
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
+            // Header
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .semantics { contentDescription = "Search verified stocks input" },
-                placeholder = {
-                    Text(text = stringResource(R.string.pick_search_hint), color = JiroColors.Muted, fontSize = 14.sp)
-                },
-                singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = JiroColors.Text,
-                    unfocusedTextColor = JiroColors.Text,
-                    focusedBorderColor = JiroColors.Amber,
-                    unfocusedBorderColor = JiroColors.Line,
-                    focusedContainerColor = JiroColors.Surface,
-                    unfocusedContainerColor = JiroColors.Surface
-                ),
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Filter chips
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(horizontal = spec.horizontalPadding, vertical = 12.dp)
             ) {
+                Text(
+                    text = stringResource(R.string.pick_title),
+                    style = JiroTypography.HeadlineMedium,
+                    color = JiroColors.Text
+                )
+
+                if (isOffline) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = JiroColors.SurfaceElevated),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.catalog_offline_banner, "${snapshotAgeMinutes}m"),
+                            color = JiroColors.Sky,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Search bar
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics { contentDescription = "Search verified stocks input" },
+                    placeholder = {
+                        Text(text = stringResource(R.string.pick_search_hint), color = JiroColors.Muted, fontSize = 14.sp)
+                    },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = JiroColors.Text,
+                        unfocusedTextColor = JiroColors.Text,
+                        focusedBorderColor = JiroColors.Amber,
+                        unfocusedBorderColor = JiroColors.Line,
+                        focusedContainerColor = JiroColors.Surface,
+                        unfocusedContainerColor = JiroColors.Surface
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Filter chips (scrollable row so narrow screens never wrap/clip)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                 StockFilter.values().forEach { filter ->
                     val isSelected = filter == selectedFilter
                     FilterChip(
@@ -237,6 +245,7 @@ fun PickScreen(
             }
         }
     }
+}
 
     // Stock Detail & Basket Add Sheet
     selectedStock?.let { stock ->

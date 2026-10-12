@@ -23,7 +23,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jiro.app.R
 import com.jiro.app.RoundUp
+import com.jiro.app.components.AdaptiveContainer
 import com.jiro.app.components.SplitBar
+import com.jiro.app.components.WindowWidthClass
+import com.jiro.app.components.rememberAdaptiveSpec
 import com.jiro.app.theme.JiroColors
 import com.jiro.app.theme.JiroTypography
 import com.jiro.core.Money
@@ -52,118 +55,127 @@ fun PayScreen(
     val roundUpUnits = RoundUp.calculate(paymentUnits, roundWholeDollarUp)
     val totalRequired = paymentUnits + roundUpUnits
     val isInsufficientFunds = totalRequired > userUsdcBalance
+    val spec = rememberAdaptiveSpec()
 
     val presets = listOf("2.50", "4.35", "12.00", "33.50")
 
-    Column(
+    AdaptiveContainer(
+        maxWidth = 520.dp,
         modifier = modifier
             .fillMaxSize()
             .background(JiroColors.Ink)
-            .padding(horizontal = 20.dp)
-            .verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .imePadding()
     ) {
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Top bar
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(
-                onClick = onBackClick,
-                modifier = Modifier
-                    .size(48.dp)
-                    .semantics { contentDescription = "Back to home" }
-            ) {
-                Text(text = "←", fontSize = 24.sp, color = JiroColors.Text)
-            }
-            Text(
-                text = stringResource(R.string.pay_title),
-                style = JiroTypography.TitleMedium,
-                color = JiroColors.Text
-            )
-            // QR scan button
-            IconButton(
-                onClick = onScanQrClick,
-                modifier = Modifier
-                    .size(48.dp)
-                    .semantics { contentDescription = "Scan Solana Pay QR code" }
-            ) {
-                Text(text = "⛶", fontSize = 20.sp, color = JiroColors.Sky)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Amount input field
-        Text(
-            text = stringResource(R.string.pay_amount_label),
-            style = JiroTypography.BodyMedium,
-            color = JiroColors.Muted,
-            modifier = Modifier.align(Alignment.Start)
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-
-        OutlinedTextField(
-            value = paymentInput,
-            onValueChange = onPaymentInputChange,
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .semantics { contentDescription = "Payment amount input" },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = JiroColors.Text,
-                unfocusedTextColor = JiroColors.Text,
-                focusedBorderColor = JiroColors.Amber,
-                unfocusedBorderColor = JiroColors.Line,
-                focusedContainerColor = JiroColors.Surface,
-                unfocusedContainerColor = JiroColors.Surface
-            ),
-            shape = RoundedCornerShape(12.dp),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            singleLine = true,
-            prefix = { Text(text = "$ ", color = JiroColors.Amber, fontWeight = FontWeight.Bold, fontSize = 22.sp) },
-            textStyle = JiroTypography.HeadlineMedium.copy(fontSize = 28.sp)
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Preset quick chips
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .fillMaxSize()
+                .padding(horizontal = spec.horizontalPadding)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            presets.forEach { preset ->
-                Box(
+            Spacer(modifier = Modifier.height(spec.spacerSmall))
+
+            // Top bar
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = onBackClick,
                     modifier = Modifier
-                        .weight(1f)
-                        .height(38.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(JiroColors.SurfaceElevated)
-                        .border(1.dp, JiroColors.Line, RoundedCornerShape(8.dp))
-                        .clickable { onPaymentInputChange(preset) }
-                        .semantics { contentDescription = "Preset amount $$preset" },
-                    contentAlignment = Alignment.Center
+                        .size(48.dp)
+                        .semantics { contentDescription = "Back to home" }
                 ) {
-                    Text(
-                        text = "$$preset",
-                        color = JiroColors.Text,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Text(text = "←", fontSize = 24.sp, color = JiroColors.Text)
+                }
+                Text(
+                    text = stringResource(R.string.pay_title),
+                    style = JiroTypography.TitleMedium,
+                    color = JiroColors.Text
+                )
+                // QR scan button
+                IconButton(
+                    onClick = onScanQrClick,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .semantics { contentDescription = "Scan Solana Pay QR code" }
+                ) {
+                    Text(text = "⛶", fontSize = 20.sp, color = JiroColors.Sky)
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(spec.spacerMedium))
 
-        // Live Split Bar
-        SplitBar(
-            paymentAmount = Money(paymentUnits),
-            roundUpAmount = Money(roundUpUnits),
-            modifier = Modifier.fillMaxWidth()
-        )
+            // Amount input field
+            Text(
+                text = stringResource(R.string.pay_amount_label),
+                style = JiroTypography.BodyMedium,
+                color = JiroColors.Muted,
+                modifier = Modifier.align(Alignment.Start)
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+
+            OutlinedTextField(
+                value = paymentInput,
+                onValueChange = onPaymentInputChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { contentDescription = "Payment amount input" },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = JiroColors.Text,
+                    unfocusedTextColor = JiroColors.Text,
+                    focusedBorderColor = JiroColors.Amber,
+                    unfocusedBorderColor = JiroColors.Line,
+                    focusedContainerColor = JiroColors.Surface,
+                    unfocusedContainerColor = JiroColors.Surface
+                ),
+                shape = RoundedCornerShape(12.dp),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                singleLine = true,
+                prefix = { Text(text = "$ ", color = JiroColors.Amber, fontWeight = FontWeight.Bold, fontSize = 22.sp) },
+                textStyle = JiroTypography.HeadlineMedium.copy(fontSize = if (spec.widthClass == WindowWidthClass.NARROW) 24.sp else 28.sp)
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Preset quick chips
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                presets.forEach { preset ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(38.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(JiroColors.SurfaceElevated)
+                            .border(1.dp, JiroColors.Line, RoundedCornerShape(8.dp))
+                            .clickable { onPaymentInputChange(preset) }
+                            .semantics { contentDescription = "Preset amount $$preset" },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "$$preset",
+                            color = JiroColors.Text,
+                            fontSize = if (spec.widthClass == WindowWidthClass.NARROW) 11.sp else 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(spec.spacerMedium))
+
+            // Live Split Bar
+            SplitBar(
+                paymentAmount = Money(paymentUnits),
+                roundUpAmount = Money(roundUpUnits),
+                modifier = Modifier.fillMaxWidth()
+            )
 
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -258,4 +270,5 @@ fun PayScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
     }
+}
 }

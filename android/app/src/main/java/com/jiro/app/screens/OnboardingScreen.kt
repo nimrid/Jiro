@@ -22,8 +22,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jiro.app.R
+import com.jiro.app.components.AdaptiveContainer
 import com.jiro.app.components.Monogram
 import com.jiro.app.components.StockLogo
+import com.jiro.app.components.rememberAdaptiveSpec
 import com.jiro.app.theme.JiroColors
 import com.jiro.app.theme.JiroTypography
 
@@ -75,27 +77,36 @@ fun OnboardingScreen(
     var selectedStepUsd by remember { mutableStateOf(1.0) }
     var selectedBoost by remember { mutableStateOf(1) }
     var selectedThresholdUsd by remember { mutableStateOf(5.0) }
+    val spec = rememberAdaptiveSpec()
 
-    Column(
+    AdaptiveContainer(
+        maxWidth = 520.dp,
         modifier = modifier
             .fillMaxSize()
             .background(JiroColors.Ink)
-            .padding(horizontal = 20.dp, vertical = 24.dp)
-            .verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .imePadding()
     ) {
-        // App header
-        Text(
-            text = stringResource(R.string.app_name),
-            style = JiroTypography.HeadlineMedium,
-            color = JiroColors.Amber
-        )
-        Text(
-            text = stringResource(R.string.onboarding_title),
-            style = JiroTypography.BodyMedium,
-            color = JiroColors.Muted,
-            modifier = Modifier.padding(top = 4.dp, bottom = 24.dp)
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = spec.horizontalPadding, vertical = spec.spacerMedium)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // App header
+            Text(
+                text = stringResource(R.string.app_name),
+                style = JiroTypography.HeadlineMedium,
+                color = JiroColors.Amber
+            )
+            Text(
+                text = stringResource(R.string.onboarding_title),
+                style = JiroTypography.BodyMedium,
+                color = JiroColors.Muted,
+                modifier = Modifier.padding(top = 4.dp, bottom = spec.spacerMedium)
+            )
 
         // Step progression indicator
         Row(
@@ -484,4 +495,5 @@ fun OnboardingScreen(
             }
         }
     }
+}
 }

@@ -24,7 +24,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jiro.app.R
+import com.jiro.app.components.AdaptiveContainer
 import com.jiro.app.components.Monogram
+import com.jiro.app.components.rememberAdaptiveSpec
 import com.jiro.app.theme.JiroColors
 import com.jiro.app.theme.JiroTypography
 import com.jiro.core.ActivityItem
@@ -37,14 +39,20 @@ fun ActivityScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val spec = rememberAdaptiveSpec()
 
-    Column(
+    AdaptiveContainer(
+        maxWidth = 560.dp,
         modifier = modifier
             .fillMaxSize()
             .background(JiroColors.Ink)
-            .padding(horizontal = 20.dp)
     ) {
-        Spacer(modifier = Modifier.height(16.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = spec.horizontalPadding)
+        ) {
+            Spacer(modifier = Modifier.height(spec.spacerSmall))
 
         Text(
             text = stringResource(R.string.activity_title),
@@ -119,6 +127,7 @@ fun ActivityScreen(
             }
         }
     }
+}
 }
 
 @Composable

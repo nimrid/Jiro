@@ -1,6 +1,7 @@
 package com.jiro.app
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.jiro.app.components.TreemapTile
@@ -89,6 +90,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val mwaRepository = MwaRepository(application)
     private val rpcClient = SolanaRpcClient()
     private val catalogRepo = AssetCatalogRepository(application)
+    private val dropsRepo = RecentDropsRepository(application)
     private val mockSwapProvider = MockSwapProvider()
     // JupiterSwapProvider lives in :core and cannot import NetworkSecurity directly;
     // inject the pinned client from the app layer instead.
@@ -110,6 +112,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         initDemoState()
         viewModelScope.launch(Dispatchers.IO) {
             StockDetailInfoProvider.refreshLivePrices()
+        }
+        val cachedPubkey = mwaRepository.getCachedPublicKey()
+        if (cachedPubkey != null) {
+            val pubkeyB58 = cachedPubkey.toBase58()
+            val drops = dropsRepo.seedIfEmpty(pubkeyB58)
+            _uiState.update {
+                it.copy(
+                    publicKey = cachedPubkey,
+                    accountLabel = mwaRepository.getCachedAccountLabel(),
+                    isConnected = true,
+                    isOnboardingComplete = true,
+                    isDemoMode = false,
+                    recentDrops = drops
+                )
+            }
+            refreshBalances()
         }
     }
 
@@ -177,6 +195,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
         recalculateAllocation()
+        refreshBalances()
     }
 
     fun startDemoMode() {
@@ -252,18 +271,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             BasketHolding("MSFT.US", PublicKey("MSFThX899B1DddH5jkyMpdArWXzP85VXLYDrbGGcRJM"), 3000)
         )
 
-        val defaultDrops = listOf(
-            RecentDropReceipt("Blue Bottle Coffee", Money(4_350_000L), Money(650_000L), "20m ago"),
-            RecentDropReceipt("Trader Joe's", Money(18_200_000L), Money(800_000L), "2h ago"),
-            RecentDropReceipt("Subway", Money(8_500_000L), Money(500_000L), "Yesterday")
-        )
-
-        val defaultActivities = listOf(
-            ActivityItem("4fK9aM1x9...", ActivityType.ROUND_UP_DEPOSIT, Money(650_000L), timestampMs = System.currentTimeMillis() - 1200000L),
-            ActivityItem("2pL8vN2y3...", ActivityType.STOCK_INVESTMENT, Money(5_000_000L), stockSymbol = "VOO", timestampMs = System.currentTimeMillis() - 86400000L),
-            ActivityItem("7bM3cQ4z5...", ActivityType.ROUND_UP_DEPOSIT, Money(800_000L), timestampMs = System.currentTimeMillis() - 7200000L)
-        )
-
         _uiState.update {
             it.copy(
                 ownerUsdcBalance = 42_500_000L, // $42.50
@@ -275,11 +282,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 holdings = initialHoldings,
                 totalPortfolioValueUsdc = 100_000_000L, // $100.00
                 totalContributionsUsdc = 94_500_000L,
-                recentDrops = defaultDrops,
-                activityList = defaultActivities,
+                recentDrops = emptyList(),
+                activityList = emptyList(),
                 nextStockTicker = "VOO",
                 nextStockName = "Vanguard S&P 500 ETF",
-                skippedStockMessage = "Skipped TSLA: paused"
+                skippedStockMessage = null
             )
         }
     }
@@ -305,11 +312,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
 
             val ticker = decision.selectedHolding.symbol.removeSuffix(".US")
+            val skippedMessage = if (decision.reason.skippedAssets.isNotEmpty()) {
+                val (symbol, reason) = decision.reason.skippedAssets.entries.first()
+                "Skipped ${symbol.removeSuffix(".US")}: $reason"
+            } else {
+                null
+            }
             _uiState.update {
                 it.copy(
                     nextStockTicker = ticker,
                     nextStockName = if (ticker == "VOO") "Vanguard S&P 500 ETF" else "$ticker Tokenized Stock",
-                    selectionReason = decision.reason
+                    selectionReason = decision.reason,
+                    skippedStockMessage = skippedMessage
                 )
             }
         } catch (e: Exception) {
@@ -319,10 +333,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectTab(tab: AppTab) {
         _uiState.update { it.copy(currentTab = tab) }
+        refreshBalances()
     }
 
     fun showPaySheet(show: Boolean) {
         _uiState.update { it.copy(isPaySheetVisible = show) }
+        if (show) {
+            refreshBalances()
+        }
     }
 
     fun showInvestSheet(show: Boolean) {
@@ -558,13 +576,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val res = mwaRepository.connectWallet(sender)
             res.fold(
                 onSuccess = { session ->
+                    val pubkeyB58 = session.publicKey.toBase58()
+                    val drops = dropsRepo.seedIfEmpty(pubkeyB58)
                     _uiState.update {
                         it.copy(
                             isLoading = false,
                             isConnected = true,
                             isDemoMode = false,
+                            onboardingStep = if (!it.isOnboardingComplete) OnboardingStep.PICK_STYLE else it.onboardingStep,
                             publicKey = session.publicKey,
                             accountLabel = session.accountLabel,
+                            recentDrops = drops,
                             statusMessage = "Connected to wallet successfully!"
                         )
                     }
@@ -582,33 +604,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun disconnectWallet() {
-        mwaRepository.clearSession()
-        _uiState.update {
-            it.copy(
-                isConnected = false,
-                isDemoMode = false,
-                isOnboardingComplete = false,
-                onboardingStep = OnboardingStep.CONNECT_WALLET,
-                isSettingsVisible = false,
-                isPaySheetVisible = false,
-                isInvestSheetVisible = false,
-                publicKey = null,
-                accountLabel = null,
-                ownerUsdcBalance = 0L,
-                ownerSolBalance = 0L,
-                vaultUsdcBalance = 0L,
-                isVaultInitialized = false,
-                holdings = emptyList(),
-                recentDrops = emptyList(),
-                currentTab = AppTab.HOME,
-                statusMessage = "Wallet disconnected"
-            )
+    fun disconnectWallet(sender: ActivityResultSender? = null) {
+        viewModelScope.launch {
+            if (sender != null) {
+                mwaRepository.disconnectWallet(sender)
+            } else {
+                mwaRepository.clearSession()
+            }
+            _uiState.update {
+                it.copy(
+                    isConnected = false,
+                    isDemoMode = false,
+                    isOnboardingComplete = false,
+                    onboardingStep = OnboardingStep.CONNECT_WALLET,
+                    isSettingsVisible = false,
+                    isPaySheetVisible = false,
+                    isInvestSheetVisible = false,
+                    publicKey = null,
+                    accountLabel = null,
+                    ownerUsdcBalance = 0L,
+                    ownerSolBalance = 0L,
+                    vaultUsdcBalance = 0L,
+                    isVaultInitialized = false,
+                    holdings = emptyList(),
+                    recentDrops = emptyList(),
+                    currentTab = AppTab.HOME,
+                    statusMessage = "Wallet disconnected"
+                )
+            }
         }
     }
 
     fun refreshBalances() {
         val owner = _uiState.value.publicKey ?: return
+        Log.d("MainViewModel", "refreshBalances for owner: ${owner.toBase58()}")
         viewModelScope.launch {
             try {
                 val ownerAta = Ata.deriveAssociatedTokenAddress(owner, usdcMint)
@@ -619,17 +648,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val solBal = rpcClient.getSolBalance(owner.toBase58())
                 val vaultBal = rpcClient.getTokenAccountBalance(vaultAta.toBase58())
                 val vaultConfig = rpcClient.getVaultConfig(vaultPda)
+                val drops = dropsRepo.getDropsForWallet(owner.toBase58())
+
+                Log.d("MainViewModel", "Balances refreshed: ownerUsdc=$usdcBal, ownerSol=$solBal, vaultUsdc=$vaultBal, vaultInit=${vaultConfig != null}")
 
                 _uiState.update {
                     it.copy(
                         ownerUsdcBalance = usdcBal,
                         ownerSolBalance = solBal,
                         vaultUsdcBalance = vaultBal,
-                        isVaultInitialized = vaultConfig != null
+                        isVaultInitialized = vaultConfig != null,
+                        recentDrops = if (drops.isNotEmpty()) drops else it.recentDrops
                     )
                 }
             } catch (e: Exception) {
-                // Silently keep last balances
+                Log.e("MainViewModel", "refreshBalances failed: ${e.message}", e)
             }
         }
     }
@@ -654,33 +687,58 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     return@launch
                 }
 
-                _uiState.update { it.copy(isLoading = true, errorMessage = null, statusMessage = "Opening wallet for approval...") }
+                _uiState.update { it.copy(isLoading = true, errorMessage = null, statusMessage = "Preparing transaction...") }
 
-                val signResult = withTimeout(75_000L) {
-                    mwaRepository.signAndSendTransaction(sender = sender) {
-                        val blockhashB58 = rpcClient.getLatestBlockhash()
-                        val blockhashBytes = Base58.decode(blockhashB58)
-                        val message = PaymentTxBuilder.buildBundledPayment(
-                            user = owner,
-                            merchant = merchantKey,
-                            usdcMint = usdcMint,
-                            paymentAmount = Money(paymentRaw),
-                            roundUpAmount = Money(roundUpRaw),
-                            vaultId = 0.toByte(),
-                            recentBlockhash = blockhashBytes
-                        )
-                        message.serializeWireTransaction()
-                    }
+                val blockhashB58 = rpcClient.getLatestBlockhash()
+                val blockhashBytes = Base58.decode(blockhashB58)
+                val wireTx = PaymentTxBuilder.buildBundledPayment(
+                    user = owner,
+                    merchant = merchantKey,
+                    usdcMint = usdcMint,
+                    paymentAmount = Money(paymentRaw),
+                    roundUpAmount = Money(roundUpRaw),
+                    vaultId = 0.toByte(),
+                    recentBlockhash = blockhashBytes,
+                    initVaultIfNeeded = !state.isVaultInitialized,
+                    programId = programId
+                ).serializeWireTransaction()
+
+                _uiState.update { it.copy(statusMessage = "Opening wallet for approval...") }
+
+                val signResult = withTimeout(120_000L) {
+                    mwaRepository.signAndSendTransaction(sender = sender, transactionPayload = wireTx)
                 }
 
                 signResult.fold(
                     onSuccess = { signature ->
+                        val merchantLabel = when {
+                            state.merchantAddress.contains("2WMvCS7Un") -> "Coffee & Bakery"
+                            state.merchantAddress.length > 8 -> "${state.merchantAddress.take(4)}...${state.merchantAddress.takeLast(4)}"
+                            else -> "Merchant"
+                        }
+                        val newDrop = RecentDropReceipt(
+                            merchantName = merchantLabel,
+                            paymentAmount = Money(paymentRaw),
+                            roundUpAmount = Money(roundUpRaw),
+                            timeAgo = "Just now",
+                            signature = signature
+                        )
+                        dropsRepo.saveDropForWallet(owner.toBase58(), newDrop)
+                        val updatedDrops = dropsRepo.getDropsForWallet(owner.toBase58())
+                        val newActivity = ActivityItem(
+                            signature = signature.take(10) + "...",
+                            type = ActivityType.ROUND_UP_DEPOSIT,
+                            amount = Money(roundUpRaw),
+                            timestampMs = System.currentTimeMillis()
+                        )
                         _uiState.update {
                             it.copy(
                                 lastTxSignature = signature,
                                 statusMessage = "Payment & Round-Up confirmed on Solana Devnet!",
                                 isPaySheetVisible = false,
-                                isDroppingCoin = true
+                                isDroppingCoin = true,
+                                recentDrops = updatedDrops,
+                                activityList = listOf(newActivity) + it.activityList
                             )
                         }
                         refreshBalances()
@@ -703,25 +761,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val owner = _uiState.value.publicKey ?: return
         viewModelScope.launch {
             try {
-                _uiState.update { it.copy(isLoading = true, errorMessage = null, statusMessage = "Opening wallet to initialize vault...") }
+                _uiState.update { it.copy(isLoading = true, errorMessage = null, statusMessage = "Preparing transaction...") }
+                val blockhashB58 = rpcClient.getLatestBlockhash()
+                val blockhashBytes = Base58.decode(blockhashB58)
+                val initIx = Instructions.initVault(
+                    owner = owner,
+                    mint = usdcMint,
+                    vaultId = 0.toByte(),
+                    maxBalance = 100_000_000L,
+                    programId = programId
+                )
+                val wireTx = MessageV0.compile(
+                    payer = owner,
+                    instructions = listOf(Instructions.setComputeUnitLimit(300_000), initIx),
+                    recentBlockhash = blockhashBytes
+                ).serializeWireTransaction()
+
+                _uiState.update { it.copy(statusMessage = "Opening wallet to initialize vault...") }
+
                 val signResult = withTimeout(75_000L) {
-                    mwaRepository.signAndSendTransaction(sender = sender) {
-                        val blockhashB58 = rpcClient.getLatestBlockhash()
-                        val blockhashBytes = Base58.decode(blockhashB58)
-                        val initIx = Instructions.initVault(
-                            owner = owner,
-                            mint = usdcMint,
-                            vaultId = 0.toByte(),
-                            maxBalance = 100_000_000L,
-                            programId = programId
-                        )
-                        val message = MessageV0.compile(
-                            payer = owner,
-                            instructions = listOf(Instructions.setComputeUnitLimit(300_000), initIx),
-                            recentBlockhash = blockhashBytes
-                        )
-                        message.serializeWireTransaction()
-                    }
+                    mwaRepository.signAndSendTransaction(sender = sender, transactionPayload = wireTx)
                 }
 
                 signResult.fold(
@@ -747,27 +806,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             try {
-                _uiState.update { it.copy(isLoading = true, errorMessage = null, statusMessage = "Opening wallet to withdraw...") }
+                _uiState.update { it.copy(isLoading = true, errorMessage = null, statusMessage = "Preparing transaction...") }
+                val blockhashB58 = rpcClient.getLatestBlockhash()
+                val blockhashBytes = Base58.decode(blockhashB58)
+                val userAta = Ata.deriveAssociatedTokenAddress(owner, usdcMint)
+                val withdrawIx = Instructions.withdraw(
+                    owner = owner,
+                    mint = usdcMint,
+                    vaultId = 0.toByte(),
+                    amount = state.vaultUsdcBalance,
+                    destinationTokenAccount = userAta,
+                    programId = programId
+                )
+                val wireTx = MessageV0.compile(
+                    payer = owner,
+                    instructions = listOf(Instructions.setComputeUnitLimit(300_000), withdrawIx),
+                    recentBlockhash = blockhashBytes
+                ).serializeWireTransaction()
+
+                _uiState.update { it.copy(statusMessage = "Opening wallet to withdraw...") }
+
                 val signResult = withTimeout(75_000L) {
-                    mwaRepository.signAndSendTransaction(sender = sender) {
-                        val blockhashB58 = rpcClient.getLatestBlockhash()
-                        val blockhashBytes = Base58.decode(blockhashB58)
-                        val userAta = Ata.deriveAssociatedTokenAddress(owner, usdcMint)
-                        val withdrawIx = Instructions.withdraw(
-                            owner = owner,
-                            mint = usdcMint,
-                            vaultId = 0.toByte(),
-                            amount = state.vaultUsdcBalance,
-                            destinationTokenAccount = userAta,
-                            programId = programId
-                        )
-                        val message = MessageV0.compile(
-                            payer = owner,
-                            instructions = listOf(Instructions.setComputeUnitLimit(300_000), withdrawIx),
-                            recentBlockhash = blockhashBytes
-                        )
-                        message.serializeWireTransaction()
-                    }
+                    mwaRepository.signAndSendTransaction(sender = sender, transactionPayload = wireTx)
                 }
 
                 signResult.fold(

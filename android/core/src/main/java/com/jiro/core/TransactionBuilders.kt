@@ -19,17 +19,41 @@ object PaymentTxBuilder {
         vaultId: Byte,
         recentBlockhash: ByteArray,
         memoText: String? = null,
-        computeUnitPriceMicroLamports: Long = 10_000L
+        computeUnitPriceMicroLamports: Long = 10_000L,
+        initVaultIfNeeded: Boolean = false,
+        programId: PublicKey = PublicKey.VAULT_PROGRAM_ID
     ): MessageV0 {
         val instructions = mutableListOf<TransactionInstruction>()
 
         // 1. Compute budget
-        instructions.add(Instructions.setComputeUnitLimit(300_000))
+        instructions.add(Instructions.setComputeUnitLimit(if (initVaultIfNeeded) 400_000 else 300_000))
         if (computeUnitPriceMicroLamports > 0) {
             instructions.add(Instructions.setComputeUnitPrice(computeUnitPriceMicroLamports))
         }
 
-        // 2. Merchant payment transfer
+        // 2. Initialize vault if not yet initialized
+        if (initVaultIfNeeded) {
+            instructions.add(
+                Instructions.initVault(
+                    owner = user,
+                    mint = usdcMint,
+                    vaultId = vaultId,
+                    maxBalance = 100_000_000L,
+                    programId = programId
+                )
+            )
+        }
+
+        // 3. Ensure merchant USDC ATA exists (idempotent creation)
+        instructions.add(
+            Instructions.createAssociatedTokenAccountIdempotent(
+                payer = user,
+                walletAddress = merchant,
+                mint = usdcMint
+            )
+        )
+
+        // 4. Merchant payment transfer
         val userUsdcAta = Ata.deriveAssociatedTokenAddress(user, usdcMint)
         val merchantUsdcAta = Ata.deriveAssociatedTokenAddress(merchant, usdcMint)
         instructions.add(
@@ -43,7 +67,7 @@ object PaymentTxBuilder {
             )
         )
 
-        // 3. Round-up deposit (if > 0)
+        // 5. Round-up deposit (if > 0)
         if (roundUpAmount > Money.ZERO) {
             instructions.add(
                 Instructions.deposit(
@@ -51,12 +75,13 @@ object PaymentTxBuilder {
                     mint = usdcMint,
                     vaultId = vaultId,
                     amount = roundUpAmount.baseUnits,
-                    ownerTokenAccount = userUsdcAta
+                    ownerTokenAccount = userUsdcAta,
+                    programId = programId
                 )
             )
         }
 
-        // 4. Memo
+        // 6. Memo
         if (!memoText.isNullOrEmpty()) {
             instructions.add(Instructions.memo(memoText))
         }

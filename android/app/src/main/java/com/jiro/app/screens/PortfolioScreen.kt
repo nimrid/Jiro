@@ -24,10 +24,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jiro.app.R
 import com.jiro.app.StockDetailInfoProvider
+import com.jiro.app.components.AdaptiveContainer
 import com.jiro.app.components.Monogram
 import com.jiro.app.components.StockLogo
 import com.jiro.app.components.TreemapTile
 import com.jiro.app.components.TreemapView
+import com.jiro.app.components.WindowWidthClass
+import com.jiro.app.components.rememberAdaptiveSpec
 import com.jiro.app.theme.JiroColors
 import com.jiro.app.theme.JiroTypography
 import com.jiro.core.Money
@@ -41,77 +44,87 @@ fun PortfolioScreen(
 ) {
     val context = LocalContext.current
     var selectedTile by remember { mutableStateOf<TreemapTile?>(null) }
+    val spec = rememberAdaptiveSpec()
 
-    Column(
+    val cardPadding = if (spec.widthClass == WindowWidthClass.NARROW) 10.dp else 14.dp
+    val statFontSize = if (spec.widthClass == WindowWidthClass.NARROW) 17.sp else 20.sp
+
+    AdaptiveContainer(
         modifier = modifier
             .fillMaxSize()
             .background(JiroColors.Ink)
-            .padding(horizontal = 20.dp)
-            .verticalScroll(rememberScrollState())
     ) {
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text(
-            text = stringResource(R.string.portfolio_title),
-            style = JiroTypography.HeadlineMedium,
-            color = JiroColors.Text
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Portfolio Stats Cards
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = spec.horizontalPadding)
+                .verticalScroll(rememberScrollState())
         ) {
-            Card(
-                modifier = Modifier
-                    .weight(1f)
-                    .border(1.dp, JiroColors.Line, RoundedCornerShape(14.dp)),
-                colors = CardDefaults.cardColors(containerColor = JiroColors.Surface),
-                shape = RoundedCornerShape(14.dp)
+            Spacer(modifier = Modifier.height(spec.spacerSmall))
+
+            Text(
+                text = stringResource(R.string.portfolio_title),
+                style = JiroTypography.HeadlineMedium,
+                color = JiroColors.Text
+            )
+
+            Spacer(modifier = Modifier.height(spec.spacerMedium))
+
+            // Portfolio Stats Cards
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text(
-                        text = stringResource(R.string.portfolio_total_value),
-                        style = JiroTypography.LabelSmall,
-                        color = JiroColors.Muted
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = Money(totalValueUsdc).formatUsdc(),
-                        style = JiroTypography.HeadlineMedium,
-                        fontSize = 20.sp,
-                        color = JiroColors.Text
-                    )
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .border(1.dp, JiroColors.Line, RoundedCornerShape(14.dp)),
+                    colors = CardDefaults.cardColors(containerColor = JiroColors.Surface),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Column(modifier = Modifier.padding(cardPadding)) {
+                        Text(
+                            text = stringResource(R.string.portfolio_total_value),
+                            style = JiroTypography.LabelSmall,
+                            color = JiroColors.Muted
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = Money(totalValueUsdc).formatUsdc(),
+                            style = JiroTypography.HeadlineMedium,
+                            fontSize = statFontSize,
+                            color = JiroColors.Text,
+                            maxLines = 1
+                        )
+                    }
+                }
+
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .border(1.dp, JiroColors.Line, RoundedCornerShape(14.dp)),
+                    colors = CardDefaults.cardColors(containerColor = JiroColors.Surface),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Column(modifier = Modifier.padding(cardPadding)) {
+                        Text(
+                            text = stringResource(R.string.portfolio_contributions),
+                            style = JiroTypography.LabelSmall,
+                            color = JiroColors.Muted
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = Money(totalContributionsUsdc).formatUsdc(),
+                            style = JiroTypography.HeadlineMedium,
+                            fontSize = statFontSize,
+                            color = JiroColors.Mint,
+                            maxLines = 1
+                        )
+                    }
                 }
             }
 
-            Card(
-                modifier = Modifier
-                    .weight(1f)
-                    .border(1.dp, JiroColors.Line, RoundedCornerShape(14.dp)),
-                colors = CardDefaults.cardColors(containerColor = JiroColors.Surface),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text(
-                        text = stringResource(R.string.portfolio_contributions),
-                        style = JiroTypography.LabelSmall,
-                        color = JiroColors.Muted
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = Money(totalContributionsUsdc).formatUsdc(),
-                        style = JiroTypography.HeadlineMedium,
-                        fontSize = 20.sp,
-                        color = JiroColors.Mint
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(spec.spacerMedium))
 
         // Treemap visualization
         TreemapView(
@@ -227,6 +240,7 @@ fun PortfolioScreen(
 
         Spacer(modifier = Modifier.height(28.dp))
     }
+}
 
     // Holding Detail Bottom Sheet
     selectedTile?.let { tile ->

@@ -32,6 +32,21 @@ class TransactionBuildersTest {
         assertTrue(wire.size in 100..MessageV0.MAX_TRANSACTION_SIZE)
         // Check v0 prefix
         assertEquals(0x80.toByte(), message.serialize()[0])
+
+        // Also test with initVaultIfNeeded = true
+        val messageWithInit = PaymentTxBuilder.buildBundledPayment(
+            user = user,
+            merchant = merchant,
+            usdcMint = usdc,
+            paymentAmount = Money.parseUsdc("12.50"),
+            roundUpAmount = Money.parseUsdc("0.50"),
+            vaultId = 0.toByte(),
+            recentBlockhash = dummyBlockhash,
+            initVaultIfNeeded = true
+        )
+        assertNotNull(messageWithInit)
+        val wireWithInit = messageWithInit.serializeWireTransaction()
+        assertTrue(wireWithInit.size in 100..MessageV0.MAX_TRANSACTION_SIZE)
     }
 
     @Test

@@ -21,6 +21,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jiro.app.R
+import com.jiro.app.components.AdaptiveContainer
+import com.jiro.app.components.rememberAdaptiveSpec
 import com.jiro.app.theme.JiroColors
 import com.jiro.app.theme.JiroTypography
 
@@ -42,22 +44,31 @@ fun SettingsScreen(
 ) {
     var showWithdrawConfirm by remember { mutableStateOf(false) }
     var showCloseConfirm by remember { mutableStateOf(false) }
+    val spec = rememberAdaptiveSpec()
 
-    Column(
+    AdaptiveContainer(
+        maxWidth = 560.dp,
         modifier = modifier
             .fillMaxSize()
             .background(JiroColors.Ink)
-            .padding(horizontal = 20.dp)
-            .verticalScroll(rememberScrollState())
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .imePadding()
     ) {
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Top bar
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = spec.horizontalPadding)
+                .verticalScroll(rememberScrollState())
         ) {
+            Spacer(modifier = Modifier.height(spec.spacerSmall))
+
+            // Top bar
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
             IconButton(
                 onClick = onBackClick,
                 modifier = Modifier
@@ -310,6 +321,7 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(32.dp))
     }
+}
 
     if (showWithdrawConfirm) {
         AlertDialog(

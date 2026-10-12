@@ -49,67 +49,75 @@ fun JiroBottomBar(
     onPayClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Surface(
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(74.dp),
-        shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
-        color = JiroColors.SurfaceElevated,
-        border = BorderStroke(1.dp, JiroColors.Line),
-        tonalElevation = 8.dp
+            .navigationBarsPadding(),
+        contentAlignment = Alignment.BottomCenter
     ) {
-        Row(
+        Surface(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 6.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .widthIn(max = 560.dp)
+                .fillMaxWidth()
+                .height(74.dp),
+            shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
+            color = JiroColors.SurfaceElevated,
+            border = BorderStroke(1.dp, JiroColors.Line),
+            tonalElevation = 8.dp
         ) {
-            // Home Tab
-            BottomNavItem(
-                label = "Home",
-                isSelected = currentTab == AppTab.HOME,
-                onClick = { onTabSelected(AppTab.HOME) },
-                modifier = Modifier.weight(1f),
-                icon = { tint -> NavHomeIcon(tint = tint) }
-            )
-
-            // Portfolio Tab
-            BottomNavItem(
-                label = "Portfolio",
-                isSelected = currentTab == AppTab.PORTFOLIO,
-                onClick = { onTabSelected(AppTab.PORTFOLIO) },
-                modifier = Modifier.weight(1f),
-                icon = { tint -> NavPortfolioIcon(tint = tint) }
-            )
-
-            // Elevated Floating Center "Pay" Button
-            Box(
+            Row(
                 modifier = Modifier
-                    .weight(1.1f)
-                    .fillMaxHeight(),
-                contentAlignment = Alignment.Center
+                    .fillMaxSize()
+                    .padding(horizontal = 6.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                PayFabButton(onClick = onPayClick)
+                // Home Tab
+                BottomNavItem(
+                    label = "Home",
+                    isSelected = currentTab == AppTab.HOME,
+                    onClick = { onTabSelected(AppTab.HOME) },
+                    modifier = Modifier.weight(1f),
+                    icon = { tint -> NavHomeIcon(tint = tint) }
+                )
+
+                // Portfolio Tab
+                BottomNavItem(
+                    label = "Portfolio",
+                    isSelected = currentTab == AppTab.PORTFOLIO,
+                    onClick = { onTabSelected(AppTab.PORTFOLIO) },
+                    modifier = Modifier.weight(1f),
+                    icon = { tint -> NavPortfolioIcon(tint = tint) }
+                )
+
+                // Elevated Floating Center "Pay" Button
+                Box(
+                    modifier = Modifier
+                        .weight(1.1f)
+                        .fillMaxHeight(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    PayFabButton(onClick = onPayClick)
+                }
+
+                // Pick Tab
+                BottomNavItem(
+                    label = "Pick",
+                    isSelected = currentTab == AppTab.PICK,
+                    onClick = { onTabSelected(AppTab.PICK) },
+                    modifier = Modifier.weight(1f),
+                    icon = { tint -> NavPickIcon(tint = tint) }
+                )
+
+                // Activity Tab
+                BottomNavItem(
+                    label = "Activity",
+                    isSelected = currentTab == AppTab.ACTIVITY,
+                    onClick = { onTabSelected(AppTab.ACTIVITY) },
+                    modifier = Modifier.weight(1f),
+                    icon = { tint -> NavActivityIcon(tint = tint) }
+                )
             }
-
-            // Pick Tab
-            BottomNavItem(
-                label = "Pick",
-                isSelected = currentTab == AppTab.PICK,
-                onClick = { onTabSelected(AppTab.PICK) },
-                modifier = Modifier.weight(1f),
-                icon = { tint -> NavPickIcon(tint = tint) }
-            )
-
-            // Activity Tab
-            BottomNavItem(
-                label = "Activity",
-                isSelected = currentTab == AppTab.ACTIVITY,
-                onClick = { onTabSelected(AppTab.ACTIVITY) },
-                modifier = Modifier.weight(1f),
-                icon = { tint -> NavActivityIcon(tint = tint) }
-            )
         }
     }
 }
