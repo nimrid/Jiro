@@ -472,12 +472,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val state = _uiState.value
         val amount = state.vaultUsdcBalance
 
+        if (amount <= 0L) {
+            _uiState.update { it.copy(errorMessage = "Jar is empty. Save some round-ups first!") }
+            return
+        }
+
+        val pouredTicker = state.nextStockTicker
         if (state.isDemoMode || state.publicKey == null) {
             viewModelScope.launch {
                 _uiState.update { it.copy(isLoading = true) }
                 delay(600L)
 
-                val pouredTicker = state.nextStockTicker
                 val newActivity = ActivityItem(
                     signature = "demo_invest_${System.currentTimeMillis() % 10000}",
                     type = ActivityType.STOCK_INVESTMENT,
@@ -522,14 +527,42 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, statusMessage = "Executing on-chain pour into ${state.nextStockTicker}...") }
             delay(1000L)
+
+            val newActivity = ActivityItem(
+                signature = "pour_${System.currentTimeMillis() % 10000}",
+                type = ActivityType.STOCK_INVESTMENT,
+                amount = Money(amount),
+                stockSymbol = pouredTicker,
+                timestampMs = System.currentTimeMillis()
+            )
+
+            val updatedHoldings = state.holdings.map { h ->
+                if (h.ticker == pouredTicker) {
+                    val addedUnits = (amount.toDouble() / 1_000_000.0) / 420.0
+                    h.copy(
+                        units = h.units + addedUnits,
+                        valueUsdc = h.valueUsdc + (amount.toDouble() / 1_000_000.0),
+                        contributionsUsdc = h.contributionsUsdc + (amount.toDouble() / 1_000_000.0),
+                        isNextBuy = false
+                    )
+                } else {
+                    h.copy(isNextBuy = true)
+                }
+            }
+
             _uiState.update {
                 it.copy(
                     isLoading = false,
                     isInvestSheetVisible = false,
                     vaultUsdcBalance = 0L,
-                    statusMessage = "Investment order submitted to Solana Devnet!"
+                    holdings = updatedHoldings,
+                    totalPortfolioValueUsdc = it.totalPortfolioValueUsdc + amount,
+                    totalContributionsUsdc = it.totalContributionsUsdc + amount,
+                    activityList = listOf(newActivity) + it.activityList,
+                    statusMessage = "Investment order submitted to Solana Devnet for $pouredTicker!"
                 )
             }
+            recalculateAllocation()
         }
     }
 
@@ -561,6 +594,99 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
             return
+        }
+
+        if (!state.isVaultInitialized) {
+            _uiState.update { it.copy(statusMessage = "No active jar found on Solana Devnet to close.") }
+            return
+        }
+
+        if (sender == null) return
+
+        val owner = state.publicKey
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true, errorMessage = null, statusMessage = "Preparing to close jar...") }
+                val blockhashB58 = rpcClient.getLatestBlockhash()
+                val blockhashBytes = Base58.decode(blockhashB58)
+
+                val instructions = mutableListOf<TransactionInstruction>()
+                instructions.add(Instructions.setComputeUnitLimit(350_000))
+                instructions.add(Instructions.setComputeUnitPrice(10_000L))
+
+                // If vault has funds, withdraw them first so vault balance is 0
+                if (state.vaultUsdcBalance > 0L) {
+                    val userAta = Ata.deriveAssociatedTokenAddress(owner, usdcMint)
+                    instructions.add(
+                        Instructions.createAssociatedTokenAccountIdempotent(
+                            payer = owner,
+                            walletAddress = owner,
+                            mint = usdcMint
+                        )
+                    )
+                    instructions.add(
+                        Instructions.withdraw(
+                            owner = owner,
+                            mint = usdcMint,
+                            vaultId = 0.toByte(),
+                            amount = state.vaultUsdcBalance,
+                            destinationTokenAccount = userAta,
+                            programId = programId
+                        )
+                    )
+                }
+
+                // Close the vault and reclaim rent lamports back to owner
+                instructions.add(
+                    Instructions.closeVault(
+                        owner = owner,
+                        mint = usdcMint,
+                        vaultId = 0.toByte(),
+                        programId = programId
+                    )
+                )
+
+                val wireTx = MessageV0.compile(
+                    payer = owner,
+                    instructions = instructions,
+                    recentBlockhash = blockhashBytes
+                ).serializeWireTransaction()
+
+                _uiState.update { it.copy(statusMessage = "Opening wallet to sign close jar transaction...") }
+
+                val signResult = withTimeout(120_000L) {
+                    mwaRepository.signAndSendTransaction(sender = sender, transactionPayload = wireTx)
+                }
+
+                signResult.fold(
+                    onSuccess = { sig ->
+                        val refundedBal = state.vaultUsdcBalance
+                        val newActivity = ActivityItem(
+                            signature = sig.take(10) + "...",
+                            type = ActivityType.WITHDRAWAL,
+                            amount = Money(refundedBal),
+                            timestampMs = System.currentTimeMillis()
+                        )
+                        _uiState.update {
+                            it.copy(
+                                lastTxSignature = sig,
+                                vaultUsdcBalance = 0L,
+                                isVaultInitialized = false,
+                                statusMessage = "Jar closed! Rent & remaining funds returned to wallet.",
+                                activityList = if (refundedBal > 0) listOf(newActivity) + it.activityList else it.activityList
+                            )
+                        }
+                        refreshBalances()
+                    },
+                    onFailure = { err ->
+                        _uiState.update { it.copy(errorMessage = "Close jar failed: ${err.message}") }
+                    }
+                )
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "Error closing jar: ${e.message}") }
+            } finally {
+                _uiState.update { it.copy(isLoading = false) }
+            }
         }
     }
 
@@ -675,12 +801,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val paymentRaw = RoundUp.parseUsdcToRaw(state.paymentInput)
                 val roundUpRaw = RoundUp.calculate(paymentRaw, state.roundWholeDollarUp)
-                val merchantKey = PublicKey(state.merchantAddress.trim())
+                val merchantKey = try {
+                    PublicKey(state.merchantAddress.trim())
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(errorMessage = "Invalid merchant Solana address") }
+                    return@launch
+                }
 
+                val requiredLamports = if (!state.isVaultInitialized) 4_000_000L else 10_000L
                 val balanceCheck = PreflightChecker.checkBalancesForPayment(
                     userUsdcBalance = state.ownerUsdcBalance,
                     totalRequiredUsdc = paymentRaw + roundUpRaw,
-                    userSolLamports = state.ownerSolBalance
+                    userSolLamports = state.ownerSolBalance,
+                    estimatedFeesLamports = requiredLamports
                 )
                 if (balanceCheck is PreflightCheckResult.Failed) {
                     _uiState.update { it.copy(errorMessage = balanceCheck.reason) }
@@ -773,13 +906,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 val wireTx = MessageV0.compile(
                     payer = owner,
-                    instructions = listOf(Instructions.setComputeUnitLimit(300_000), initIx),
+                    instructions = listOf(
+                        Instructions.setComputeUnitLimit(300_000),
+                        Instructions.setComputeUnitPrice(10_000L),
+                        initIx
+                    ),
                     recentBlockhash = blockhashBytes
                 ).serializeWireTransaction()
 
                 _uiState.update { it.copy(statusMessage = "Opening wallet to initialize vault...") }
 
-                val signResult = withTimeout(75_000L) {
+                val signResult = withTimeout(120_000L) {
                     mwaRepository.signAndSendTransaction(sender = sender, transactionPayload = wireTx)
                 }
 
@@ -804,6 +941,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val state = _uiState.value
         val owner = state.publicKey ?: return
 
+        if (!state.isVaultInitialized) {
+            _uiState.update { it.copy(errorMessage = "Vault is not initialized on Solana Devnet.") }
+            return
+        }
+
+        if (state.vaultUsdcBalance <= 0L) {
+            _uiState.update { it.copy(errorMessage = "Vault has zero balance to withdraw.") }
+            return
+        }
+
         viewModelScope.launch {
             try {
                 _uiState.update { it.copy(isLoading = true, errorMessage = null, statusMessage = "Preparing transaction...") }
@@ -820,22 +967,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 val wireTx = MessageV0.compile(
                     payer = owner,
-                    instructions = listOf(Instructions.setComputeUnitLimit(300_000), withdrawIx),
+                    instructions = listOf(
+                        Instructions.setComputeUnitLimit(300_000),
+                        Instructions.setComputeUnitPrice(10_000L),
+                        Instructions.createAssociatedTokenAccountIdempotent(
+                            payer = owner,
+                            walletAddress = owner,
+                            mint = usdcMint
+                        ),
+                        withdrawIx
+                    ),
                     recentBlockhash = blockhashBytes
                 ).serializeWireTransaction()
 
                 _uiState.update { it.copy(statusMessage = "Opening wallet to withdraw...") }
 
-                val signResult = withTimeout(75_000L) {
+                val signResult = withTimeout(120_000L) {
                     mwaRepository.signAndSendTransaction(sender = sender, transactionPayload = wireTx)
                 }
 
                 signResult.fold(
                     onSuccess = { sig ->
+                        val withdrawnAmount = state.vaultUsdcBalance
+                        val newActivity = ActivityItem(
+                            signature = sig.take(10) + "...",
+                            type = ActivityType.WITHDRAWAL,
+                            amount = Money(withdrawnAmount),
+                            timestampMs = System.currentTimeMillis()
+                        )
                         _uiState.update {
                             it.copy(
                                 lastTxSignature = sig,
-                                statusMessage = "Withdrew $${RoundUp.formatUsdc(state.vaultUsdcBalance)} back to your wallet!"
+                                statusMessage = "Withdrew $${RoundUp.formatUsdc(withdrawnAmount)} back to your wallet!",
+                                activityList = listOf(newActivity) + it.activityList
                             )
                         }
                         refreshBalances()

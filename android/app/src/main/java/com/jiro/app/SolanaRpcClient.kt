@@ -186,20 +186,44 @@ class SolanaRpcClient(
     private fun postRpc(payload: JSONObject): JSONObject {
         val method = payload.optString("method", "unknown")
         Log.d(TAG, "postRpc -> $method to $rpcUrl")
-        val body = payload.toString().toRequestBody(jsonMediaType)
-        val request = Request.Builder()
-            .url(rpcUrl)
-            .post(body)
-            .build()
+        var attempts = 0
+        val maxAttempts = 3
+        var lastException: IOException? = null
 
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                Log.e(TAG, "postRpc failed for $method: code ${response.code} ${response.message}")
-                throw IOException("RPC request failed with code ${response.code}: ${response.message}")
+        while (attempts < maxAttempts) {
+            attempts++
+            try {
+                val body = payload.toString().toRequestBody(jsonMediaType)
+                val request = Request.Builder()
+                    .url(rpcUrl)
+                    .post(body)
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        Log.e(TAG, "postRpc attempt $attempts failed for $method: code ${response.code} ${response.message}")
+                        if ((response.code == 429 || response.code in 500..599) && attempts < maxAttempts) {
+                            try { Thread.sleep(attempts * 600L) } catch (_: InterruptedException) {}
+                            return@use
+                        }
+                        throw IOException("RPC request failed with code ${response.code}: ${response.message}")
+                    }
+                    val responseBody = response.body?.string() ?: throw IOException("Empty response from RPC")
+                    Log.d(TAG, "postRpc <- $method status ${response.code}")
+                    val jsonResponse = JSONObject(responseBody)
+                    if (jsonResponse.has("error")) {
+                        Log.w(TAG, "postRpc $method returned RPC-level error: ${jsonResponse.optJSONObject("error")}")
+                    }
+                    return jsonResponse
+                }
+            } catch (e: IOException) {
+                lastException = e
+                Log.w(TAG, "postRpc attempt $attempts failed with IOException: ${e.message}")
+                if (attempts < maxAttempts) {
+                    try { Thread.sleep(attempts * 600L) } catch (_: InterruptedException) {}
+                }
             }
-            val responseBody = response.body?.string() ?: throw IOException("Empty response from RPC")
-            Log.d(TAG, "postRpc <- $method status ${response.code}")
-            return JSONObject(responseBody)
         }
+        throw lastException ?: IOException("Failed to execute RPC $method after $maxAttempts attempts")
     }
 }

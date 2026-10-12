@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Deep OLED Obsidian Background -->
+    <path
+        android:pathData="M0,0h108v108h-108z"
+        android:fillColor="#0E1013" />
+    <!-- Ambient soft dark circle -->
+    <path
+        android:pathData="M54,54m-38,0a38,38 0 1,0 76,0a38,38 0 1,0 -76,0"
+        android:fillColor="#151920" />
+    <!-- Concentric precision ring (Seeker ledger aesthetic) -->
+    <path
+        android:pathData="M54,54m-30,0a30,30 0 1,0 60,0a30,30 0 1,0 -60,0"
+        android:strokeWidth="0.8"
+        android:strokeColor="#232932" />
+</vector>
