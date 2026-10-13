@@ -15,6 +15,15 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.math.absoluteValue
 
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+
+enum class PriceMovement {
+    UP,
+    DOWN,
+    SAME
+}
+
 data class StockFinancialData(
     val ticker: String,
     val name: String,
@@ -26,8 +35,22 @@ data class StockFinancialData(
     val sparklinePoints: List<Float>,
     val high24h: Double = 0.0,
     val low24h: Double = 0.0,
-    val isRealPrice: Boolean = true
-)
+    val isRealPrice: Boolean = true,
+    val movement: PriceMovement = PriceMovement.SAME,
+    val volume24hUsd: Double = 0.0,
+    val rawSymbol: String = "",
+    val lastUpdatedEpochMs: Long = 0L
+) {
+    fun formattedVolume(): String {
+        return when {
+            volume24hUsd >= 1_000_000_000.0 -> String.format("$%.1fB Vol", volume24hUsd / 1_000_000_000.0)
+            volume24hUsd >= 1_000_000.0 -> String.format("$%.1fM Vol", volume24hUsd / 1_000_000.0)
+            volume24hUsd >= 1_000.0 -> String.format("$%.1fK Vol", volume24hUsd / 1_000.0)
+            volume24hUsd > 0.0 -> String.format("$%.0f Vol", volume24hUsd)
+            else -> ""
+        }
+    }
+}
 
 data class BackpackTickerData(
     val symbol: String,
@@ -46,8 +69,16 @@ object StockDetailInfoProvider {
 
     private val tickerMap = ConcurrentHashMap<String, BackpackTickerData>()
     private val descriptionMap = ConcurrentHashMap<String, String>()
+    private val movementMap = ConcurrentHashMap<String, PriceMovement>()
+    private val prevPriceMap = ConcurrentHashMap<String, Double>()
 
     var version by mutableIntStateOf(0)
+        private set
+
+    var lastUpdatedEpochMs by mutableLongStateOf(System.currentTimeMillis())
+        private set
+
+    var isRefreshing by mutableStateOf(false)
         private set
 
     private val httpClient: OkHttpClient by lazy {
@@ -127,18 +158,44 @@ object StockDetailInfoProvider {
             for (i in 0 until array.length()) {
                 val obj = array.getJSONObject(i)
                 val symbol = obj.getString("symbol")
-                val cleanTicker = symbol.removeSuffix("_USDC").removeSuffix(".US").uppercase()
+                val cleanTicker = symbol
+                    .removeSuffix("_USDC_PERP")
+                    .removeSuffix("_PERP")
+                    .removeSuffix("_USDC")
+                    .removeSuffix(".US")
+                    .uppercase()
 
-                val lastPrice = obj.optDouble("lastPrice", 0.0)
-                val priceChange = obj.optDouble("priceChange", 0.0)
-                val priceChangePercent = obj.optDouble("priceChangePercent", 0.0) * 100.0
-                val high = obj.optDouble("high", lastPrice)
-                val low = obj.optDouble("low", lastPrice)
-                val firstPrice = obj.optDouble("firstPrice", lastPrice)
-                val volume = obj.optDouble("volume", 0.0)
-                val quoteVolume = obj.optDouble("quoteVolume", 0.0)
+                val lastPriceStr = obj.optString("lastPrice", "")
+                val lastPrice = lastPriceStr.toDoubleOrNull() ?: obj.optDouble("lastPrice", 0.0)
+                val priceChangeStr = obj.optString("priceChange", "")
+                val priceChange = priceChangeStr.toDoubleOrNull() ?: obj.optDouble("priceChange", 0.0)
+                val priceChangePercentStr = obj.optString("priceChangePercent", "")
+                val priceChangePercentRaw = priceChangePercentStr.toDoubleOrNull() ?: obj.optDouble("priceChangePercent", 0.0)
+                val priceChangePercent = priceChangePercentRaw * 100.0
+
+                val highStr = obj.optString("high", "")
+                val high = highStr.toDoubleOrNull() ?: obj.optDouble("high", lastPrice)
+                val lowStr = obj.optString("low", "")
+                val low = lowStr.toDoubleOrNull() ?: obj.optDouble("low", lastPrice)
+                val firstPriceStr = obj.optString("firstPrice", "")
+                val firstPrice = firstPriceStr.toDoubleOrNull() ?: obj.optDouble("firstPrice", lastPrice)
+                val volumeStr = obj.optString("volume", "")
+                val volume = volumeStr.toDoubleOrNull() ?: obj.optDouble("volume", 0.0)
+                val quoteVolumeStr = obj.optString("quoteVolume", "")
+                val quoteVolume = quoteVolumeStr.toDoubleOrNull() ?: obj.optDouble("quoteVolume", 0.0)
 
                 if (lastPrice > 0.0) {
+                    val prevPrice = prevPriceMap[cleanTicker]
+                    if (prevPrice != null && prevPrice > 0.0) {
+                        val diff = lastPrice - prevPrice
+                        if (diff > 0.0001) {
+                            movementMap[cleanTicker] = PriceMovement.UP
+                        } else if (diff < -0.0001) {
+                            movementMap[cleanTicker] = PriceMovement.DOWN
+                        }
+                    }
+                    prevPriceMap[cleanTicker] = lastPrice
+
                     tickerMap[cleanTicker] = BackpackTickerData(
                         symbol = symbol,
                         ticker = cleanTicker,
@@ -153,7 +210,6 @@ object StockDetailInfoProvider {
                     )
                 }
             }
-            version++
         } catch (e: Exception) {
             // parse error
         }
@@ -161,25 +217,58 @@ object StockDetailInfoProvider {
 
     /**
      * Refreshes live prices from Backpack Exchange REST API.
+     * Fetches both external reference stock quotes (1,180+ tokenized equities)
+     * and live Backpack exchange orderbook tickers.
      */
-    suspend fun refreshLivePrices() = withContext(Dispatchers.IO) {
+    suspend fun refreshLivePrices(): Boolean = withContext(Dispatchers.IO) {
+        withContext(Dispatchers.Main) { isRefreshing = true }
+        var hasUpdates = false
         try {
-            val request = Request.Builder()
+            val externalReq = Request.Builder()
                 .url("https://api.backpack.exchange/api/v1/tickers?source=External&interval=1d")
                 .header("User-Agent", "Jiro-Mobile/1.0")
                 .build()
 
-            val response = httpClient.newCall(request).execute()
-            if (response.isSuccessful) {
-                val body = response.body?.string()
+            val extResponse = httpClient.newCall(externalReq).execute()
+            if (extResponse.isSuccessful) {
+                val body = extResponse.body?.string()
                 if (!body.isNullOrBlank()) {
                     parseAndStoreTickers(body)
+                    hasUpdates = true
                 }
             }
-            response.close()
+            extResponse.close()
         } catch (e: Exception) {
-            // Silently maintain local cached snapshot
+            // keep cached
         }
+
+        try {
+            val exchangeReq = Request.Builder()
+                .url("https://api.backpack.exchange/api/v1/tickers")
+                .header("User-Agent", "Jiro-Mobile/1.0")
+                .build()
+
+            val exResponse = httpClient.newCall(exchangeReq).execute()
+            if (exResponse.isSuccessful) {
+                val body = exResponse.body?.string()
+                if (!body.isNullOrBlank()) {
+                    parseAndStoreTickers(body)
+                    hasUpdates = true
+                }
+            }
+            exResponse.close()
+        } catch (e: Exception) {
+            // keep cached
+        }
+
+        withContext(Dispatchers.Main) {
+            isRefreshing = false
+            if (hasUpdates) {
+                lastUpdatedEpochMs = System.currentTimeMillis()
+                version++
+            }
+        }
+        hasUpdates
     }
 
     /**
@@ -242,6 +331,10 @@ object StockDetailInfoProvider {
             .removeSuffix(" - Backpack Securities")
             .ifBlank { clean }
 
+        val movement = movementMap[clean] ?: PriceMovement.SAME
+        val quoteVolume = backpackData?.quoteVolume ?: 0.0
+        val rawSymbol = backpackData?.symbol ?: "${clean}.US_USDC"
+
         return StockFinancialData(
             ticker = clean,
             name = displayName,
@@ -253,7 +346,11 @@ object StockDetailInfoProvider {
             sparklinePoints = sparkline,
             high24h = high,
             low24h = low,
-            isRealPrice = backpackData != null
+            isRealPrice = backpackData != null,
+            movement = movement,
+            volume24hUsd = quoteVolume,
+            rawSymbol = rawSymbol,
+            lastUpdatedEpochMs = lastUpdatedEpochMs
         )
     }
 

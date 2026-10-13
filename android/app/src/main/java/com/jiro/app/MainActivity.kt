@@ -25,6 +25,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.util.Log
+import androidx.compose.ui.platform.LocalClipboardManager
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import com.google.mlkit.vision.barcode.common.Barcode
 import com.jiro.app.components.JiroBottomBar
 import com.jiro.app.screens.*
 import com.jiro.app.theme.JiroColors
@@ -39,6 +44,35 @@ class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
     private val activityResultSender = ActivityResultSender(this)
 
+    private val gmsScanner by lazy {
+        val options = GmsBarcodeScannerOptions.Builder()
+            .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+            .enableAutoZoom()
+            .build()
+        GmsBarcodeScanning.getClient(this, options)
+    }
+
+    private fun launchQrScanner(onFallback: () -> Unit) {
+        try {
+            gmsScanner.startScan()
+                .addOnSuccessListener { barcode ->
+                    barcode.rawValue?.let { raw ->
+                        viewModel.handleScannedPaymentUri(raw)
+                    }
+                }
+                .addOnCanceledListener {
+                    // User canceled scan
+                }
+                .addOnFailureListener { e ->
+                    Log.w("MainActivity", "GmsBarcodeScanner failed: ${e.message}", e)
+                    onFallback()
+                }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Could not start scanner: ${e.message}", e)
+            onFallback()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -47,6 +81,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             JiroTheme {
                 val state by viewModel.uiState.collectAsState()
+                var showScanFallback by remember { mutableStateOf(false) }
 
                 JiroMainApp(
                     state = state,
@@ -72,11 +107,72 @@ class MainActivity : ComponentActivity() {
                     onRulesChanged = { step, boost, cap -> viewModel.setRules(step, boost, cap) },
                     onBasketChanged = { viewModel.updateBasket(it) },
                     onRetryCatalog = { viewModel.retryCatalog() },
+                    onRefreshStockPrices = { viewModel.refreshStockPrices() },
+                    onScanQrClick = { launchQrScanner { showScanFallback = true } },
                     onDismissPay = { viewModel.showPaySheet(false) },
                     onDismissInvest = { viewModel.showInvestSheet(false) },
                     onDismissSettings = { viewModel.showSettings(false) },
                     onClearMessages = { viewModel.clearMessages() }
                 )
+
+                if (showScanFallback) {
+                    val clipboardManager = LocalClipboardManager.current
+                    var manualInput by remember { mutableStateOf("") }
+
+                    AlertDialog(
+                        onDismissRequest = { showScanFallback = false },
+                        containerColor = JiroColors.SurfaceElevated,
+                        title = {
+                            Text("Solana Pay Scanner", color = JiroColors.Text, fontWeight = FontWeight.Bold)
+                        },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Text(
+                                    "Camera scanner unavailable or busy. You can paste a Solana Pay URI or merchant address below:",
+                                    color = JiroColors.Muted,
+                                    fontSize = 13.sp
+                                )
+                                OutlinedTextField(
+                                    value = manualInput,
+                                    onValueChange = { manualInput = it },
+                                    placeholder = { Text("solana:... or Address", color = JiroColors.Muted) },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Button(
+                                    onClick = {
+                                        val clip = clipboardManager.getText()?.text
+                                        if (!clip.isNullOrBlank()) {
+                                            manualInput = clip
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = JiroColors.Surface),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("📋 Paste from Clipboard", color = JiroColors.Text)
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    showScanFallback = false
+                                    if (manualInput.isNotBlank()) {
+                                        viewModel.handleScannedPaymentUri(manualInput)
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = JiroColors.Amber)
+                            ) {
+                                Text("Apply", color = JiroColors.Ink, fontWeight = FontWeight.Bold)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showScanFallback = false }) {
+                                Text("Cancel", color = JiroColors.Muted)
+                            }
+                        }
+                    )
+                }
             }
         }
     }
@@ -131,6 +227,8 @@ fun JiroMainApp(
     onRulesChanged: (Double, Int, Double) -> Unit,
     onBasketChanged: (List<com.jiro.core.BasketHolding>) -> Unit,
     onRetryCatalog: () -> Unit,
+    onRefreshStockPrices: () -> Unit = {},
+    onScanQrClick: () -> Unit = {},
     onDismissPay: () -> Unit,
     onDismissInvest: () -> Unit,
     onDismissSettings: () -> Unit,
@@ -201,7 +299,9 @@ fun JiroMainApp(
                                 isOffline = state.isDemoMode,
                                 currentBasket = state.userBasket,
                                 onBasketChanged = onBasketChanged,
-                                onRetryCatalog = onRetryCatalog
+                                onRetryCatalog = onRetryCatalog,
+                                onRefreshStockPrices = onRefreshStockPrices,
+                                isRefreshingPrices = StockDetailInfoProvider.isRefreshing
                             )
                         }
 
@@ -234,7 +334,7 @@ fun JiroMainApp(
                     isLoading = state.isLoading,
                     errorMessage = state.errorMessage,
                     onConfirmPay = onConfirmPayment,
-                    onScanQrClick = {},
+                    onScanQrClick = onScanQrClick,
                     onBackClick = onDismissPay
                 )
             }

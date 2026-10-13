@@ -1,8 +1,11 @@
 package com.jiro.app.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.*
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -11,13 +14,17 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -25,6 +32,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.jiro.app.PriceMovement
 import com.jiro.app.R
 import com.jiro.app.StockDetailInfoProvider
 import com.jiro.app.StockFinancialData
@@ -33,6 +41,7 @@ import com.jiro.app.theme.JiroColors
 import com.jiro.app.theme.JiroTypography
 import com.jiro.core.BasketHolding
 import com.jiro.core.CatalogEntry
+import kotlinx.coroutines.delay
 
 enum class StockFilter {
     ALL,
@@ -51,6 +60,8 @@ fun PickScreen(
     currentBasket: List<BasketHolding>,
     onBasketChanged: (List<BasketHolding>) -> Unit,
     onRetryCatalog: () -> Unit,
+    onRefreshStockPrices: () -> Unit = {},
+    isRefreshingPrices: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -88,13 +99,38 @@ fun PickScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = spec.horizontalPadding, vertical = 12.dp)
+                    .padding(horizontal = spec.horizontalPadding, vertical = 10.dp)
             ) {
-                Text(
-                    text = stringResource(R.string.pick_title),
-                    style = JiroTypography.HeadlineMedium,
-                    color = JiroColors.Text
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.pick_title),
+                        style = JiroTypography.HeadlineMedium,
+                        color = JiroColors.Text
+                    )
+
+                    LiveBackpackBadge(
+                        isRefreshing = isRefreshingPrices,
+                        lastUpdatedMs = StockDetailInfoProvider.lastUpdatedEpochMs,
+                        onRefresh = onRefreshStockPrices
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "Real-time pricing • Backpack Exchange",
+                        color = JiroColors.Muted,
+                        fontSize = 11.sp
+                    )
+                }
 
                 if (isOffline) {
                     Spacer(modifier = Modifier.height(8.dp))
@@ -323,13 +359,33 @@ fun CatalogStockRow(
             horizontalAlignment = Alignment.End,
             modifier = Modifier.weight(0.9f)
         ) {
-            Text(
-                text = String.format("$%.2f", info.priceUsd),
-                color = JiroColors.Text,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = JiroTypography.BodyFamily
+            val priceColor by animateColorAsState(
+                targetValue = when (info.movement) {
+                    PriceMovement.UP -> JiroColors.Mint
+                    PriceMovement.DOWN -> JiroColors.Coral
+                    PriceMovement.SAME -> JiroColors.Text
+                },
+                animationSpec = tween(durationMillis = 800),
+                label = "price_flash"
             )
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                if (info.movement == PriceMovement.UP) {
+                    Text("▲", color = JiroColors.Mint, fontSize = 8.sp)
+                } else if (info.movement == PriceMovement.DOWN) {
+                    Text("▼", color = JiroColors.Coral, fontSize = 8.sp)
+                }
+                Text(
+                    text = String.format("$%.2f", info.priceUsd),
+                    color = priceColor,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = JiroTypography.BodyFamily
+                )
+            }
             Text(
                 text = String.format("%s%.2f%%", changeSign, info.change24hPercent),
                 color = changeColor,
@@ -437,6 +493,47 @@ fun StockDetailSheet(
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.weight(1f, fill = false)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .background(JiroColors.Mint, shape = CircleShape)
+                                )
+                                Text(
+                                    text = "LIVE BACKPACK FEED",
+                                    color = JiroColors.Mint,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "• ${info.rawSymbol.ifBlank { "${stock.ticker}.US_USDC" }}",
+                                    color = JiroColors.Sky,
+                                    fontSize = 10.sp,
+                                    maxLines = 1
+                                )
+                            }
+                            if (info.formattedVolume().isNotBlank()) {
+                                Text(
+                                    text = info.formattedVolume(),
+                                    color = JiroColors.Muted,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -649,3 +746,89 @@ fun StockDetailSheet(
         }
     )
 }
+
+@Composable
+fun LiveBackpackBadge(
+    isRefreshing: Boolean,
+    lastUpdatedMs: Long,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val dotAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "dot_pulse"
+    )
+
+    val spinTransition = rememberInfiniteTransition(label = "spin")
+    val spinAngle by spinTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(700, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "spin_angle"
+    )
+
+    var relativeTimeText by remember { mutableStateOf("Just now") }
+    LaunchedEffect(lastUpdatedMs) {
+        while (true) {
+            val elapsedSec = (System.currentTimeMillis() - lastUpdatedMs) / 1000L
+            relativeTimeText = when {
+                elapsedSec < 5 -> "Just now"
+                elapsedSec < 60 -> "${elapsedSec}s ago"
+                else -> "${elapsedSec / 60}m ago"
+            }
+            delay(2000L)
+        }
+    }
+
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = JiroColors.Surface,
+        border = BorderStroke(1.dp, if (isRefreshing) JiroColors.Amber.copy(alpha = 0.5f) else JiroColors.Mint.copy(alpha = 0.35f)),
+        modifier = modifier.clickable { onRefresh() }
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .background(
+                        color = if (isRefreshing) JiroColors.Amber else JiroColors.Mint.copy(alpha = dotAlpha),
+                        shape = CircleShape
+                    )
+            )
+            Text(
+                text = if (isRefreshing) "UPDATING" else "LIVE",
+                color = if (isRefreshing) JiroColors.Amber else JiroColors.Mint,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp
+            )
+            Text(
+                text = "• $relativeTimeText",
+                color = JiroColors.Muted,
+                fontSize = 10.sp
+            )
+            Icon(
+                imageVector = Icons.Default.Refresh,
+                contentDescription = "Refresh stock prices",
+                tint = if (isRefreshing) JiroColors.Amber else JiroColors.Muted,
+                modifier = Modifier
+                    .size(12.dp)
+                    .rotate(if (isRefreshing) spinAngle else 0f)
+            )
+        }
+    }
+}
+

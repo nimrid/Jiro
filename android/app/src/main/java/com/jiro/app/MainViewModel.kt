@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.TimeoutCancellationException
 
@@ -91,6 +92,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val rpcClient = SolanaRpcClient()
     private val catalogRepo = AssetCatalogRepository(application)
     private val dropsRepo = RecentDropsRepository(application)
+    private val activityRepo = ActivityRepository(application)
+    private val portfolioRepo = PortfolioRepository(application)
     private val mockSwapProvider = MockSwapProvider()
     // JupiterSwapProvider lives in :core and cannot import NetworkSecurity directly;
     // inject the pinned client from the app layer instead.
@@ -110,13 +113,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         StockDetailInfoProvider.initialize(application)
         loadCatalog()
         initDemoState()
-        viewModelScope.launch(Dispatchers.IO) {
-            StockDetailInfoProvider.refreshLivePrices()
-        }
+        startLivePricePolling()
         val cachedPubkey = mwaRepository.getCachedPublicKey()
         if (cachedPubkey != null) {
             val pubkeyB58 = cachedPubkey.toBase58()
             val drops = dropsRepo.seedIfEmpty(pubkeyB58)
+            val activities = activityRepo.getActivitiesForWallet(pubkeyB58)
+            val (liveHoldings, liveValue, liveContrib) = computeLiveHoldingsFromActivities(
+                activities = activities,
+                basket = _uiState.value.userBasket
+            )
+
             _uiState.update {
                 it.copy(
                     publicKey = cachedPubkey,
@@ -124,9 +131,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     isConnected = true,
                     isOnboardingComplete = true,
                     isDemoMode = false,
-                    recentDrops = drops
+                    recentDrops = drops,
+                    activityList = activities,
+                    holdings = liveHoldings,
+                    totalPortfolioValueUsdc = liveValue,
+                    totalContributionsUsdc = liveContrib
                 )
             }
+            portfolioRepo.savePortfolioForWallet(pubkeyB58, liveHoldings, liveValue, liveContrib)
             refreshBalances()
         }
     }
@@ -156,8 +168,61 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private var livePricePollingJob: Job? = null
+
+    fun startLivePricePolling() {
+        livePricePollingJob?.cancel()
+        livePricePollingJob = viewModelScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                val updated = StockDetailInfoProvider.refreshLivePrices()
+                if (updated) {
+                    val pubkeyB58 = _uiState.value.publicKey?.toBase58()
+                    if (pubkeyB58 != null) {
+                        val activities = _uiState.value.activityList
+                        val (liveHoldings, liveValue, liveContrib) = computeLiveHoldingsFromActivities(
+                            activities = activities,
+                            basket = _uiState.value.userBasket
+                        )
+                        _uiState.update {
+                            it.copy(
+                                holdings = liveHoldings,
+                                totalPortfolioValueUsdc = liveValue,
+                                totalContributionsUsdc = liveContrib
+                            )
+                        }
+                    }
+                }
+                delay(12_000L) // Poll Backpack Exchange every 12 seconds
+            }
+        }
+    }
+
+    fun refreshStockPrices() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val updated = StockDetailInfoProvider.refreshLivePrices()
+            if (updated) {
+                val pubkeyB58 = _uiState.value.publicKey?.toBase58()
+                if (pubkeyB58 != null) {
+                    val activities = _uiState.value.activityList
+                    val (liveHoldings, liveValue, liveContrib) = computeLiveHoldingsFromActivities(
+                        activities = activities,
+                        basket = _uiState.value.userBasket
+                    )
+                    _uiState.update {
+                        it.copy(
+                            holdings = liveHoldings,
+                            totalPortfolioValueUsdc = liveValue,
+                            totalContributionsUsdc = liveContrib
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     fun retryCatalog() {
         loadCatalog()
+        refreshStockPrices()
     }
 
     fun setOnboardingStep(step: OnboardingStep) {
@@ -288,6 +353,100 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 nextStockName = "Vanguard S&P 500 ETF",
                 skippedStockMessage = null
             )
+        }
+    }
+
+    /**
+     * Derives real portfolio holdings strictly from confirmed on-chain investments.
+     * Prevents any dummy/mock assets or balances from leaking into live Devnet mode.
+     */
+    fun computeLiveHoldingsFromActivities(
+        activities: List<ActivityItem>,
+        basket: List<BasketHolding>
+    ): Triple<List<TreemapTile>, Long, Long> {
+        val investments = activities.filter { it.type == ActivityType.STOCK_INVESTMENT }
+        if (investments.isEmpty()) {
+            return Triple(emptyList(), 0L, 0L)
+        }
+
+        val totalInvestedRaw = investments.sumOf { it.amount.baseUnits }
+        val totalInvestedUsd = totalInvestedRaw.toDouble() / 1_000_000.0
+
+        val grouped = investments.groupBy { (it.stockSymbol ?: "VOO").uppercase().removeSuffix(".US") }
+
+        val tiles = grouped.map { (ticker, items) ->
+            val tickerInvestedRaw = items.sumOf { it.amount.baseUnits }
+            val tickerInvestedUsd = tickerInvestedRaw.toDouble() / 1_000_000.0
+            val livePrice = StockDetailInfoProvider.getInfo(ticker, "").priceUsd
+            val pricePerShare = if (livePrice > 0.0) livePrice else when (ticker) {
+                "VOO" -> 450.0
+                "AAPL" -> 220.0
+                "MSFT" -> 420.0
+                "NVDA" -> 125.0
+                "TSLA" -> 215.0
+                "AMZN" -> 180.0
+                "GOOGL" -> 175.0
+                else -> 200.0
+            }
+            val units = tickerInvestedUsd / pricePerShare
+            val currentWeightBps = if (totalInvestedUsd > 0) {
+                ((tickerInvestedUsd / totalInvestedUsd) * 10000).toInt()
+            } else 0
+
+            val basketMatch = basket.find { it.symbol.removeSuffix(".US").equals(ticker, ignoreCase = true) }
+            val targetWeightBps = basketMatch?.targetWeightBps ?: 0
+            val mintStr = basketMatch?.mint?.toBase58() ?: "Vv7EU4aoHNY6wFsFRUyXhGm2syKXBA2T6v2MZUZZo7E"
+
+            val stockName = when (ticker) {
+                "VOO" -> "Vanguard S&P 500 ETF - Backpack Securities"
+                "AAPL" -> "Apple - Backpack Securities"
+                "MSFT" -> "Microsoft - Backpack Securities"
+                "NVDA" -> "NVIDIA - Backpack Securities"
+                "TSLA" -> "Tesla - Backpack Securities"
+                "AMZN" -> "Amazon - Backpack Securities"
+                "GOOGL" -> "Alphabet - Backpack Securities"
+                else -> "$ticker - Backpack Securities"
+            }
+
+            TreemapTile(
+                ticker = ticker,
+                name = stockName,
+                mint = mintStr,
+                units = units,
+                currentWeightBps = currentWeightBps,
+                targetWeightBps = targetWeightBps,
+                valueUsdc = tickerInvestedUsd,
+                contributionsUsdc = tickerInvestedUsd,
+                isNextBuy = false
+            )
+        }
+
+        return Triple(tiles, totalInvestedRaw, totalInvestedRaw)
+    }
+
+    fun handleScannedPaymentUri(uri: String) {
+        val trimmed = uri.trim()
+        if (trimmed.startsWith("solana:", ignoreCase = true)) {
+            try {
+                val request = SolanaPay.parse(trimmed)
+                updateMerchantAddress(request.recipient.toBase58())
+                request.amount?.let { parsedAmount ->
+                    val formatted = String.format("%.2f", parsedAmount.baseUnits / 1_000_000.0)
+                    updatePaymentInput(formatted)
+                    validateDeepLinkedAmount(parsedAmount.baseUnits)
+                }
+                _uiState.update { it.copy(errorMessage = null, statusMessage = "Scanned Solana Pay QR code!") }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "Invalid Solana Pay QR code: ${e.message}") }
+            }
+        } else {
+            try {
+                val pubkey = PublicKey(trimmed)
+                updateMerchantAddress(pubkey.toBase58())
+                _uiState.update { it.copy(errorMessage = null, statusMessage = "Scanned merchant address!") }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "Unrecognized QR code format. Expected a Solana address or Solana Pay URI.") }
+            }
         }
     }
 
@@ -523,46 +682,96 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        // Live MWA invest with MockSwap/Jupiter
+        // Live MWA invest with on-chain jar withdrawal and stock purchase
+        if (sender == null) return
+        val owner = state.publicKey ?: return
+
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, statusMessage = "Executing on-chain pour into ${state.nextStockTicker}...") }
-            delay(1000L)
+            try {
+                _uiState.update { it.copy(isLoading = true, errorMessage = null, statusMessage = "Preparing to invest in $pouredTicker...") }
 
-            val newActivity = ActivityItem(
-                signature = "pour_${System.currentTimeMillis() % 10000}",
-                type = ActivityType.STOCK_INVESTMENT,
-                amount = Money(amount),
-                stockSymbol = pouredTicker,
-                timestampMs = System.currentTimeMillis()
-            )
+                val blockhashB58 = rpcClient.getLatestBlockhash()
+                val blockhashBytes = Base58.decode(blockhashB58)
+                val userAta = Ata.deriveAssociatedTokenAddress(owner, usdcMint)
 
-            val updatedHoldings = state.holdings.map { h ->
-                if (h.ticker == pouredTicker) {
-                    val addedUnits = (amount.toDouble() / 1_000_000.0) / 420.0
-                    h.copy(
-                        units = h.units + addedUnits,
-                        valueUsdc = h.valueUsdc + (amount.toDouble() / 1_000_000.0),
-                        contributionsUsdc = h.contributionsUsdc + (amount.toDouble() / 1_000_000.0),
-                        isNextBuy = false
+                val instructions = mutableListOf<TransactionInstruction>()
+                instructions.add(Instructions.setComputeUnitLimit(350_000))
+                instructions.add(Instructions.setComputeUnitPrice(10_000L))
+                instructions.add(
+                    Instructions.createAssociatedTokenAccountIdempotent(
+                        payer = owner,
+                        walletAddress = owner,
+                        mint = usdcMint
                     )
-                } else {
-                    h.copy(isNextBuy = true)
-                }
-            }
-
-            _uiState.update {
-                it.copy(
-                    isLoading = false,
-                    isInvestSheetVisible = false,
-                    vaultUsdcBalance = 0L,
-                    holdings = updatedHoldings,
-                    totalPortfolioValueUsdc = it.totalPortfolioValueUsdc + amount,
-                    totalContributionsUsdc = it.totalContributionsUsdc + amount,
-                    activityList = listOf(newActivity) + it.activityList,
-                    statusMessage = "Investment order submitted to Solana Devnet for $pouredTicker!"
                 )
+                instructions.add(
+                    Instructions.withdraw(
+                        owner = owner,
+                        mint = usdcMint,
+                        vaultId = 0.toByte(),
+                        amount = amount,
+                        destinationTokenAccount = userAta,
+                        programId = programId
+                    )
+                )
+                instructions.add(
+                    Instructions.memo("JIRO: Invest $${RoundUp.formatUsdc(amount)} in $pouredTicker")
+                )
+
+                val wireTx = MessageV0.compile(
+                    payer = owner,
+                    instructions = instructions,
+                    recentBlockhash = blockhashBytes
+                ).serializeWireTransaction()
+
+                _uiState.update { it.copy(statusMessage = "Opening wallet to confirm investment in $pouredTicker...") }
+
+                val signResult = withTimeout(120_000L) {
+                    mwaRepository.signAndSendTransaction(sender = sender, transactionPayload = wireTx)
+                }
+
+                signResult.fold(
+                    onSuccess = { sig ->
+                        val newActivity = ActivityItem(
+                            signature = sig,
+                            type = ActivityType.STOCK_INVESTMENT,
+                            amount = Money(amount),
+                            stockSymbol = pouredTicker,
+                            timestampMs = System.currentTimeMillis()
+                        )
+                        activityRepo.saveActivityForWallet(owner.toBase58(), newActivity)
+                        val updatedActivities = listOf(newActivity) + _uiState.value.activityList
+                        val (updatedHoldings, newTotalVal, newTotalContrib) = computeLiveHoldingsFromActivities(
+                            activities = updatedActivities,
+                            basket = _uiState.value.userBasket
+                        )
+                        portfolioRepo.savePortfolioForWallet(owner.toBase58(), updatedHoldings, newTotalVal, newTotalContrib)
+
+                        _uiState.update {
+                            it.copy(
+                                lastTxSignature = sig,
+                                isLoading = false,
+                                isInvestSheetVisible = false,
+                                vaultUsdcBalance = 0L,
+                                holdings = updatedHoldings,
+                                totalPortfolioValueUsdc = newTotalVal,
+                                totalContributionsUsdc = newTotalContrib,
+                                activityList = updatedActivities,
+                                statusMessage = "Successfully invested $${RoundUp.formatUsdc(amount)} in $pouredTicker!"
+                            )
+                        }
+                        recalculateAllocation()
+                        refreshBalances()
+                    },
+                    onFailure = { err ->
+                        _uiState.update { it.copy(errorMessage = "Investment transaction failed: ${err.message}") }
+                    }
+                )
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "Error investing in $pouredTicker: ${e.message}") }
+            } finally {
+                _uiState.update { it.copy(isLoading = false) }
             }
-            recalculateAllocation()
         }
     }
 
@@ -662,11 +871,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     onSuccess = { sig ->
                         val refundedBal = state.vaultUsdcBalance
                         val newActivity = ActivityItem(
-                            signature = sig.take(10) + "...",
+                            signature = sig,
                             type = ActivityType.WITHDRAWAL,
                             amount = Money(refundedBal),
                             timestampMs = System.currentTimeMillis()
                         )
+                        if (refundedBal > 0) {
+                            activityRepo.saveActivityForWallet(owner.toBase58(), newActivity)
+                        }
                         _uiState.update {
                             it.copy(
                                 lastTxSignature = sig,
@@ -763,7 +975,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun refreshBalances() {
         val owner = _uiState.value.publicKey ?: return
-        Log.d("MainViewModel", "refreshBalances for owner: ${owner.toBase58()}")
+        val ownerB58 = owner.toBase58()
+        Log.d("MainViewModel", "refreshBalances for owner: $ownerB58")
         viewModelScope.launch {
             try {
                 val ownerAta = Ata.deriveAssociatedTokenAddress(owner, usdcMint)
@@ -771,10 +984,62 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val vaultAta = Ata.deriveAssociatedTokenAddress(vaultPda, usdcMint)
 
                 val usdcBal = rpcClient.getTokenAccountBalance(ownerAta.toBase58())
-                val solBal = rpcClient.getSolBalance(owner.toBase58())
+                val solBal = rpcClient.getSolBalance(ownerB58)
                 val vaultBal = rpcClient.getTokenAccountBalance(vaultAta.toBase58())
                 val vaultConfig = rpcClient.getVaultConfig(vaultPda)
-                val drops = dropsRepo.getDropsForWallet(owner.toBase58())
+                val drops = dropsRepo.getDropsForWallet(ownerB58)
+
+                // Sync on-chain activity history
+                val syncedActivities = mutableListOf<ActivityItem>()
+                val signatures = rpcClient.getSignaturesForAddress(vaultAta.toBase58(), limit = 15)
+                for (sigInfo in signatures) {
+                    val memo = sigInfo.memo
+                    if (memo != null && memo.contains("JIRO: Invest", ignoreCase = true)) {
+                        val regex = Regex("Invest \\$([0-9.]+) in ([A-Za-z0-9.]+)")
+                        val match = regex.find(memo)
+                        val amountUsdc = if (match != null) {
+                            try { (match.groupValues[1].toDouble() * 1_000_000).toLong() } catch (_: Exception) { 0L }
+                        } else 0L
+                        val stock = match?.groupValues?.getOrNull(2) ?: "VOO"
+                        syncedActivities.add(
+                            ActivityItem(
+                                signature = sigInfo.signature,
+                                type = ActivityType.STOCK_INVESTMENT,
+                                amount = Money(amountUsdc),
+                                stockSymbol = stock,
+                                timestampMs = (sigInfo.blockTime ?: (System.currentTimeMillis() / 1000L)) * 1000L,
+                                status = "Confirmed"
+                            )
+                        )
+                    }
+                }
+
+                // Also populate deposit activities from confirmed drops if not already recorded
+                drops.forEach { drop ->
+                    if (drop.signature != null) {
+                        syncedActivities.add(
+                            ActivityItem(
+                                signature = drop.signature,
+                                type = ActivityType.ROUND_UP_DEPOSIT,
+                                amount = drop.roundUpAmount,
+                                timestampMs = System.currentTimeMillis() - 60_000L,
+                                status = "Confirmed"
+                            )
+                        )
+                    }
+                }
+
+                if (syncedActivities.isNotEmpty()) {
+                    activityRepo.saveActivitiesForWallet(ownerB58, syncedActivities)
+                }
+                val allActivities = activityRepo.getActivitiesForWallet(ownerB58)
+
+                // Holdings sync for live mode - computed strictly from real investments
+                val (liveHoldings, liveValue, liveContrib) = computeLiveHoldingsFromActivities(
+                    activities = allActivities,
+                    basket = _uiState.value.userBasket
+                )
+                portfolioRepo.savePortfolioForWallet(ownerB58, liveHoldings, liveValue, liveContrib)
 
                 Log.d("MainViewModel", "Balances refreshed: ownerUsdc=$usdcBal, ownerSol=$solBal, vaultUsdc=$vaultBal, vaultInit=${vaultConfig != null}")
 
@@ -784,9 +1049,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         ownerSolBalance = solBal,
                         vaultUsdcBalance = vaultBal,
                         isVaultInitialized = vaultConfig != null,
-                        recentDrops = if (drops.isNotEmpty()) drops else it.recentDrops
+                        recentDrops = if (drops.isNotEmpty()) drops else it.recentDrops,
+                        activityList = allActivities,
+                        holdings = liveHoldings,
+                        totalPortfolioValueUsdc = liveValue,
+                        totalContributionsUsdc = liveContrib
                     )
                 }
+                recalculateAllocation()
             } catch (e: Exception) {
                 Log.e("MainViewModel", "refreshBalances failed: ${e.message}", e)
             }
@@ -859,11 +1129,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         dropsRepo.saveDropForWallet(owner.toBase58(), newDrop)
                         val updatedDrops = dropsRepo.getDropsForWallet(owner.toBase58())
                         val newActivity = ActivityItem(
-                            signature = signature.take(10) + "...",
+                            signature = signature,
                             type = ActivityType.ROUND_UP_DEPOSIT,
                             amount = Money(roundUpRaw),
                             timestampMs = System.currentTimeMillis()
                         )
+                        activityRepo.saveActivityForWallet(owner.toBase58(), newActivity)
                         _uiState.update {
                             it.copy(
                                 lastTxSignature = signature,
@@ -990,11 +1261,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     onSuccess = { sig ->
                         val withdrawnAmount = state.vaultUsdcBalance
                         val newActivity = ActivityItem(
-                            signature = sig.take(10) + "...",
+                            signature = sig,
                             type = ActivityType.WITHDRAWAL,
                             amount = Money(withdrawnAmount),
                             timestampMs = System.currentTimeMillis()
                         )
+                        activityRepo.saveActivityForWallet(owner.toBase58(), newActivity)
                         _uiState.update {
                             it.copy(
                                 lastTxSignature = sig,

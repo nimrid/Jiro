@@ -82,6 +82,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.coil.compose)
     implementation(libs.coil.svg)
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

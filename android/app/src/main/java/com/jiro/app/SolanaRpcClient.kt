@@ -150,7 +150,8 @@ class SolanaRpcClient(
         val signature: String,
         val slot: Long,
         val blockTime: Long?,
-        val err: String?
+        val err: String?,
+        val memo: String? = null
     )
 
     suspend fun getSignaturesForAddress(address: String, limit: Int = 10): List<SignatureInfo> = withContext(Dispatchers.IO) {
@@ -172,7 +173,8 @@ class SolanaRpcClient(
                         signature = obj.getString("signature"),
                         slot = obj.optLong("slot", 0L),
                         blockTime = if (obj.has("blockTime") && !obj.isNull("blockTime")) obj.getLong("blockTime") else null,
-                        err = if (obj.has("err") && !obj.isNull("err")) obj.get("err").toString() else null
+                        err = if (obj.has("err") && !obj.isNull("err")) obj.get("err").toString() else null,
+                        memo = if (obj.has("memo") && !obj.isNull("memo")) obj.getString("memo") else null
                     )
                 )
             }
